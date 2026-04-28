@@ -1,0 +1,18 @@
+title = "AccountingSystem Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Public Google reCAPTCHA site key constants in Blazor auth pages"
+  condition = "AND"
+  regexTarget = "line"
+  regexes = [
+    '''private const string (RecaptchaSiteKey|SiteKey) = "6L[0-9A-Za-z_-]{38}";'''
+  ]
+  paths = [
+    '''AccountingSystem\.Client[\\/]Pages[\\/]Auth[\\/](Login|RegisterCompany)\.razor$'''
+  ]
