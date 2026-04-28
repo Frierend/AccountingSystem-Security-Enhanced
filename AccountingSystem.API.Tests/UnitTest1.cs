@@ -519,7 +519,7 @@ public class AuthServiceTests
                 ["JwtSettings:ExpiryMinutes"] = "60",
                 ["JwtSettings:ClockSkewSeconds"] = "60",
                 ["AuthSecurity:Lockout:MaxFailedAccessAttempts"] = "5",
-                ["AuthSecurity:Lockout:LockoutMinutes"] = "15",
+                ["AuthSecurity:Lockout:LockoutMinutes"] = "5",
                 ["AuthSecurity:LoginCaptcha:FailedAttemptThreshold"] = "3",
                 ["IdentityTokens:PasswordResetTokenLifespanMinutes"] = "120",
                 ["IdentityTokens:EmailConfirmationTokenLifespanMinutes"] = "1440",
@@ -926,7 +926,7 @@ public class AuthServiceTests
                 ["JwtSettings:ExpiryMinutes"] = "60",
                 ["JwtSettings:ClockSkewSeconds"] = "60",
                 ["AuthSecurity:Lockout:MaxFailedAccessAttempts"] = "5",
-                ["AuthSecurity:Lockout:LockoutMinutes"] = "15",
+                ["AuthSecurity:Lockout:LockoutMinutes"] = "5",
                 ["AuthSecurity:LoginCaptcha:FailedAttemptThreshold"] = "3",
                 ["IdentityTokens:PasswordResetTokenLifespanMinutes"] = "120",
                 ["IdentityTokens:EmailConfirmationTokenLifespanMinutes"] = "1440",
@@ -1399,6 +1399,199 @@ public class AuthServiceTests
         loginResponse.RequiresTwoFactor.Should().BeFalse();
         loginResponse.Token.Should().NotBeNullOrWhiteSpace();
     }
+
+    [Fact]
+    public async Task EnableEmailOtpMfaAsync_WhenEmailIsNotConfirmed_ShouldRejectSetup()
+    {
+        var context = TestHelpers.CreateContext(tenantId: 146);
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var service = TestHelpers.CreateAuthService(context, harness);
+
+        var role = new Role { Id = 1, Name = "Admin" };
+        var company = new Company { Id = 146, Name = "Email Otp Unconfirmed Co", IsActive = true, Status = "Active" };
+        var user = TestHelpers.CreateUser(role, company.Id, "email-otp-unconfirmed@test.com", "LongPassword123!");
+
+        context.Roles.Add(role);
+        context.Companies.Add(company);
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        await harness.AccountService.EnsureProvisionedAsync(
+            TestHelpers.CreateIdentitySnapshot(user, role.Name, requireEmailConfirmation: true, emailConfirmed: false),
+            "LongPassword123!");
+
+        var exception = await Record.ExceptionAsync(() => service.SendEmailOtpSetupCodeAsync(user.Id));
+
+        exception.Should().NotBeNull();
+        exception!.Message.Should().Contain("Confirm your email address");
+        harness.EmailService.SentEmailOtps.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LoginAsync_WhenEmailOtpMfaIsEnabled_ShouldSendOtpChallengeAndCompleteLogin()
+    {
+        var context = TestHelpers.CreateContext(tenantId: 147);
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var service = TestHelpers.CreateAuthService(context, harness);
+
+        var (_, company, user) = await TestHelpers.CreateConfirmedIdentityBackedUserAsync(
+            context,
+            harness,
+            companyId: 147,
+            email: "email-otp-login@test.com");
+
+        await service.SendEmailOtpSetupCodeAsync(user.Id);
+        var setupCode = harness.EmailService.SentEmailOtps.Single().OtpCode;
+        await service.EnableEmailOtpMfaAsync(user.Id, new VerifyEmailOtpMfaDTO { Code = setupCode });
+
+        var loginResponse = await service.LoginAsync(new LoginDTO
+        {
+            Email = user.Email,
+            Password = "LongPassword123!"
+        });
+
+        loginResponse.RequiresTwoFactor.Should().BeTrue();
+        loginResponse.Token.Should().BeEmpty();
+        loginResponse.PreferredTwoFactorMethod.Should().Be(MfaLoginMethods.EmailOtp);
+        loginResponse.AvailableTwoFactorMethods.Should().Equal(MfaLoginMethods.EmailOtp);
+        loginResponse.EmailOtpSent.Should().BeTrue();
+        harness.EmailService.SentEmailOtps.Should().HaveCount(2);
+
+        var loginCode = harness.EmailService.SentEmailOtps.Last().OtpCode;
+        var mfaResponse = await service.CompleteMfaLoginAsync(new LoginMfaDTO
+        {
+            ChallengeToken = loginResponse.TwoFactorChallengeToken,
+            Method = MfaLoginMethods.EmailOtp,
+            TwoFactorCode = loginCode
+        });
+
+        mfaResponse.Token.Should().NotBeNullOrWhiteSpace();
+        mfaResponse.CompanyId.Should().Be(company.Id);
+    }
+
+    [Fact]
+    public async Task LoginAsync_WhenAuthenticatorAndEmailOtpAreEnabled_ShouldPreferAuthenticatorWithoutAutoSendingEmail()
+    {
+        var context = TestHelpers.CreateContext(tenantId: 148);
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var service = TestHelpers.CreateAuthService(context, harness);
+
+        var (_, _, user) = await TestHelpers.CreateConfirmedIdentityBackedUserAsync(
+            context,
+            harness,
+            companyId: 148,
+            email: "both-mfa@test.com");
+
+        var setup = await service.BeginAuthenticatorSetupAsync(user.Id);
+        await service.VerifyAuthenticatorSetupAsync(user.Id, new VerifyAuthenticatorSetupDTO
+        {
+            Code = TestHelpers.GenerateAuthenticatorCode(setup.SharedKey)
+        });
+
+        await service.SendEmailOtpSetupCodeAsync(user.Id);
+        await service.EnableEmailOtpMfaAsync(user.Id, new VerifyEmailOtpMfaDTO
+        {
+            Code = harness.EmailService.SentEmailOtps.Single().OtpCode
+        });
+
+        var loginResponse = await service.LoginAsync(new LoginDTO
+        {
+            Email = user.Email,
+            Password = "LongPassword123!"
+        });
+
+        loginResponse.RequiresTwoFactor.Should().BeTrue();
+        loginResponse.PreferredTwoFactorMethod.Should().Be(MfaLoginMethods.AuthenticatorApp);
+        loginResponse.AvailableTwoFactorMethods.Should().Contain(MfaLoginMethods.AuthenticatorApp);
+        loginResponse.AvailableTwoFactorMethods.Should().Contain(MfaLoginMethods.RecoveryCode);
+        loginResponse.AvailableTwoFactorMethods.Should().Contain(MfaLoginMethods.EmailOtp);
+        loginResponse.EmailOtpSent.Should().BeFalse();
+        harness.EmailService.SentEmailOtps.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task CompleteMfaLoginAsync_WhenEmailOtpIsWrongTooManyTimes_ShouldFailSafely()
+    {
+        var context = TestHelpers.CreateContext(tenantId: 149);
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var service = TestHelpers.CreateAuthService(context, harness);
+
+        var (_, _, user) = await TestHelpers.CreateConfirmedIdentityBackedUserAsync(
+            context,
+            harness,
+            companyId: 149,
+            email: "email-otp-wrong@test.com");
+
+        await service.SendEmailOtpSetupCodeAsync(user.Id);
+        await service.EnableEmailOtpMfaAsync(user.Id, new VerifyEmailOtpMfaDTO
+        {
+            Code = harness.EmailService.SentEmailOtps.Single().OtpCode
+        });
+
+        var loginResponse = await service.LoginAsync(new LoginDTO
+        {
+            Email = user.Email,
+            Password = "LongPassword123!"
+        });
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var exception = await Record.ExceptionAsync(() => service.CompleteMfaLoginAsync(new LoginMfaDTO
+            {
+                ChallengeToken = loginResponse.TwoFactorChallengeToken,
+                Method = MfaLoginMethods.EmailOtp,
+                TwoFactorCode = "000000"
+            }));
+
+            exception.Should().NotBeNull();
+            exception!.Message.Should().Contain("invalid or expired");
+        }
+
+        var finalException = await Record.ExceptionAsync(() => service.CompleteMfaLoginAsync(new LoginMfaDTO
+        {
+            ChallengeToken = loginResponse.TwoFactorChallengeToken,
+            Method = MfaLoginMethods.EmailOtp,
+            TwoFactorCode = "000000"
+        }));
+
+        finalException.Should().NotBeNull();
+        finalException!.Message.Should().Contain("Too many email verification attempts");
+    }
+}
+
+public class EmailOtpChallengeStoreTests
+{
+    [Fact]
+    public void Verify_WhenCodeIsReused_ShouldRejectSecondAttempt()
+    {
+        var store = new EmailOtpChallengeStore();
+        store.Issue("challenge", 1, 2, "123456", TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(60));
+
+        store.Verify("challenge", 1, 2, "123456", maxAttempts: 3).Succeeded.Should().BeTrue();
+        store.Verify("challenge", 1, 2, "123456", maxAttempts: 3).Status.Should().Be(EmailOtpVerificationStatus.NotFound);
+    }
+
+    [Fact]
+    public async Task Verify_WhenCodeExpires_ShouldReject()
+    {
+        var store = new EmailOtpChallengeStore();
+        store.Issue("challenge", 1, 2, "123456", TimeSpan.FromMilliseconds(1), TimeSpan.FromSeconds(60));
+
+        await Task.Delay(20);
+
+        store.Verify("challenge", 1, 2, "123456", maxAttempts: 3).Status.Should().Be(EmailOtpVerificationStatus.Expired);
+    }
+
+    [Fact]
+    public void Issue_WhenCooldownIsActive_ShouldRateLimit()
+    {
+        var store = new EmailOtpChallengeStore();
+        store.Issue("challenge", 1, 2, "123456", TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(60));
+
+        var result = store.Issue("challenge", 1, 2, "654321", TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(60));
+
+        result.Status.Should().Be(EmailOtpIssueStatus.RateLimited);
+    }
 }
 
 public class JwtMiddlewareTests
@@ -1600,12 +1793,15 @@ internal static class TestHelpers
                 ["JwtSettings:ExpiryMinutes"] = "60",
                 ["JwtSettings:ClockSkewSeconds"] = clockSkewSeconds.ToString(),
                 ["AuthSecurity:Lockout:MaxFailedAccessAttempts"] = "5",
-                ["AuthSecurity:Lockout:LockoutMinutes"] = "15",
+                ["AuthSecurity:Lockout:LockoutMinutes"] = "5",
                 ["AuthSecurity:LoginCaptcha:FailedAttemptThreshold"] = "3",
                 ["IdentityTokens:PasswordResetTokenLifespanMinutes"] = "120",
                 ["IdentityTokens:EmailConfirmationTokenLifespanMinutes"] = "1440",
                 ["Mfa:AuthenticatorIssuer"] = "AccountingSystem",
                 ["Mfa:LoginChallengeLifespanMinutes"] = "5",
+                ["Mfa:EmailOtpExpirationMinutes"] = "5",
+                ["Mfa:EmailOtpMaxVerificationAttempts"] = "3",
+                ["Mfa:EmailOtpResendCooldownSeconds"] = "60",
                 ["AppUrls:ClientBaseUrl"] = "https://client.example.test"
             })
             .Build();
@@ -1719,7 +1915,10 @@ internal static class TestHelpers
         var mfaSettings = Microsoft.Extensions.Options.Options.Create(new MfaSettings
         {
             AuthenticatorIssuer = "AccountingSystem",
-            LoginChallengeLifespanMinutes = 5
+            LoginChallengeLifespanMinutes = 5,
+            EmailOtpExpirationMinutes = 5,
+            EmailOtpMaxVerificationAttempts = 3,
+            EmailOtpResendCooldownSeconds = 60
         });
         var loginChallengeTokenService = new LoginChallengeTokenService(configuration, mfaSettings);
         var mfaService = new MfaService(
@@ -1727,6 +1926,8 @@ internal static class TestHelpers
             harness.AccountService,
             loginChallengeTokenService,
             auditService.Object,
+            new EmailOtpChallengeStore(),
+            harness.EmailService,
             mfaSettings);
 
         return new AuthService(
@@ -1899,7 +2100,7 @@ internal sealed class IdentityTestHarness : IDisposable
                 options.Password.RequiredUniqueChars = 1;
 
                 options.Lockout.MaxFailedAccessAttempts = 5;
-                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
                 options.Lockout.AllowedForNewUsers = true;
 
                 options.User.RequireUniqueEmail = true;
@@ -1950,6 +2151,7 @@ internal sealed class TestAccountEmailService : IAccountEmailService
 {
     public List<SentResetEmail> SentResetEmails { get; } = new();
     public List<SentConfirmationEmail> SentConfirmationEmails { get; } = new();
+    public List<SentEmailOtp> SentEmailOtps { get; } = new();
 
     public Task SendPasswordResetAsync(string email, string fullName, string resetLink, CancellationToken cancellationToken = default)
     {
@@ -1962,7 +2164,14 @@ internal sealed class TestAccountEmailService : IAccountEmailService
         SentConfirmationEmails.Add(new SentConfirmationEmail(email, fullName, confirmationLink));
         return Task.CompletedTask;
     }
+
+    public Task SendEmailOtpAsync(string email, string fullName, string otpCode, int expiresInMinutes, CancellationToken cancellationToken = default)
+    {
+        SentEmailOtps.Add(new SentEmailOtp(email, fullName, otpCode, expiresInMinutes));
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed record SentResetEmail(string Email, string FullName, string ResetLink);
 internal sealed record SentConfirmationEmail(string Email, string FullName, string ConfirmationLink);
+internal sealed record SentEmailOtp(string Email, string FullName, string OtpCode, int ExpiresInMinutes);

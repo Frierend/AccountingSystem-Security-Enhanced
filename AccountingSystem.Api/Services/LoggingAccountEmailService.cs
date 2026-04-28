@@ -32,5 +32,16 @@ namespace AccountingSystem.API.Services
 
             return Task.CompletedTask;
         }
+
+        public Task SendEmailOtpAsync(string email, string fullName, string otpCode, int expiresInMinutes, CancellationToken cancellationToken = default)
+        {
+            _logger.LogInformation(
+                "Development email sender: email OTP requested for {Email} ({FullName}). ExpiresInMinutes={ExpiresInMinutes}.",
+                email,
+                fullName,
+                expiresInMinutes);
+
+            return Task.CompletedTask;
+        }
     }
 }

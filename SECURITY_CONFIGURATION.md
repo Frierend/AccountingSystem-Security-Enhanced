@@ -29,6 +29,11 @@ The project policy is:
 - `JwtSettings__ClockSkewSeconds`
 - `IdentityTokens__PasswordResetTokenLifespanMinutes`
 - `IdentityTokens__EmailConfirmationTokenLifespanMinutes`
+- `Mfa__AuthenticatorIssuer`
+- `Mfa__LoginChallengeLifespanMinutes`
+- `Mfa__EmailOtpExpirationMinutes`
+- `Mfa__EmailOtpMaxVerificationAttempts`
+- `Mfa__EmailOtpResendCooldownSeconds`
 - `AuthSecurity__Lockout__MaxFailedAccessAttempts`
 - `AuthSecurity__Lockout__LockoutMinutes`
 - `AuthSecurity__RateLimiting__Login__PermitLimit`
@@ -115,7 +120,7 @@ When Gmail SMTP is used, the `Smtp__Password` value should be a Gmail App Passwo
 For this academic project, payment integration is documented and tested in **PayMongo test mode**. Production cutover requires:
 
 - production keys
-- hardened webhook signature verification
+- continued webhook signature validation against the production webhook secret
 - operational monitoring for payment callback/webhook paths
 
 ## Committed Configuration Policy
@@ -132,5 +137,5 @@ For this academic project, payment integration is documented and tested in **Pay
 
 ## Known Limitations and Recommended Improvements
 
-- **Known Limitation:** webhook signature verification logic for PayMongo is currently permissive and must be hardened.
+- **Known Limitation:** Email OTP challenges are stored in memory for this demo build; use database or distributed-cache backed storage for production or multi-instance deployments.
 - **Recommended Improvement:** add automated secret scanning and configuration policy checks in CI.

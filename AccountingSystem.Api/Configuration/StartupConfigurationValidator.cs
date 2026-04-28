@@ -51,6 +51,9 @@ namespace AccountingSystem.API.Configuration
             CheckRequiredValue(configuration["AppUrls:ClientBaseUrl"], "AppUrls:ClientBaseUrl", missingKeys);
             CheckRequiredValue(configuration["Mfa:AuthenticatorIssuer"], "Mfa:AuthenticatorIssuer", missingKeys);
             CheckRequiredValue(configuration["Mfa:LoginChallengeLifespanMinutes"], "Mfa:LoginChallengeLifespanMinutes", missingKeys);
+            CheckRequiredValue(configuration["Mfa:EmailOtpExpirationMinutes"], "Mfa:EmailOtpExpirationMinutes", missingKeys);
+            CheckRequiredValue(configuration["Mfa:EmailOtpMaxVerificationAttempts"], "Mfa:EmailOtpMaxVerificationAttempts", missingKeys);
+            CheckRequiredValue(configuration["Mfa:EmailOtpResendCooldownSeconds"], "Mfa:EmailOtpResendCooldownSeconds", missingKeys);
 
             if (validateSmtpConfiguration)
             {
@@ -89,6 +92,9 @@ namespace AccountingSystem.API.Configuration
             CheckPositiveInteger(configuration["IdentityTokens:PasswordResetTokenLifespanMinutes"], "IdentityTokens:PasswordResetTokenLifespanMinutes", invalidKeys);
             CheckPositiveInteger(configuration["IdentityTokens:EmailConfirmationTokenLifespanMinutes"], "IdentityTokens:EmailConfirmationTokenLifespanMinutes", invalidKeys);
             CheckPositiveInteger(configuration["Mfa:LoginChallengeLifespanMinutes"], "Mfa:LoginChallengeLifespanMinutes", invalidKeys);
+            CheckPositiveInteger(configuration["Mfa:EmailOtpExpirationMinutes"], "Mfa:EmailOtpExpirationMinutes", invalidKeys);
+            CheckPositiveInteger(configuration["Mfa:EmailOtpMaxVerificationAttempts"], "Mfa:EmailOtpMaxVerificationAttempts", invalidKeys);
+            CheckPositiveInteger(configuration["Mfa:EmailOtpResendCooldownSeconds"], "Mfa:EmailOtpResendCooldownSeconds", invalidKeys);
 
             if (validateSmtpConfiguration)
             {

@@ -120,7 +120,7 @@
                 </MudCard>
             </EditForm>
 
-            <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+            <MudCard Elevation="0" Outlined="true" Class="shadcn-card mb-6">
                 <MudCardHeader>
                     <CardHeaderContent>
                         <div style="font-size: 1.125rem; font-weight: 600; color: var(--text-main);">Authenticator App MFA</div>
@@ -136,9 +136,9 @@
                     }
                     else
                     {
-                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4">
-                            Google Authenticator-compatible TOTP codes are the only MFA method supported in this app.
-                        </MudAlert>
+                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4">
+                                Authenticator App MFA uses Google Authenticator-compatible TOTP codes. Email OTP MFA can be managed separately below.
+                            </MudAlert>
 
                         <div class="d-flex flex-wrap gap-3 align-center mb-4">
                             <MudChip T="string"
@@ -242,7 +242,7 @@
                                                Color="Color.Error"
                                                Disabled="@isSensitiveActionSubmitting"
                                                OnClick="@(() => OpenSensitiveAction("disable"))">
-                                        Disable MFA
+                                        Disable Authenticator
                                     </MudButton>
                                 }
                             </div>
@@ -304,6 +304,150 @@
                     }
                 </MudCardContent>
             </MudCard>
+
+            <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <div style="font-size: 1.125rem; font-weight: 600; color: var(--text-main);">Email OTP MFA</div>
+                        <div style="font-size: 0.875rem; color: var(--text-muted);">Send a one-time 6-digit code to your confirmed email address during sign-in.</div>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (isMfaLoading)
+                    {
+                        <div class="d-flex justify-center py-8">
+                            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-wrap gap-3 align-center mb-4">
+                            <MudChip T="string"
+                                     Color="@(mfaStatus.IsEmailOtpEnabled ? Color.Success : Color.Default)"
+                                     Variant="Variant.Filled">
+                                @(mfaStatus.IsEmailOtpEnabled ? "Email OTP Enabled" : "Email OTP Not Enabled")
+                            </MudChip>
+                            <MudChip T="string"
+                                     Color="@(mfaStatus.IsEmailConfirmed ? Color.Success : Color.Warning)"
+                                     Variant="Variant.Outlined">
+                                @(mfaStatus.IsEmailConfirmed ? "Email Confirmed" : "Email Not Confirmed")
+                            </MudChip>
+                        </div>
+
+                        @if (!mfaStatus.IsEmailConfirmed)
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4">
+                                Confirm your email address before enabling Email OTP MFA.
+                            </MudAlert>
+                        }
+
+                        @if (emailOtpSetupPending)
+                        {
+                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4">
+                                Enter the code sent to @mfaStatus.Email. Codes expire after a few minutes and can be used only once.
+                            </MudAlert>
+
+                            <EditForm Model="@emailOtpVerificationModel" OnValidSubmit="HandleVerifyEmailOtpSetup">
+                                <DataAnnotationsValidator />
+                                <MudTextField Label="Email code"
+                                              @bind-Value="emailOtpVerificationModel.Code"
+                                              For="@(() => emailOtpVerificationModel.Code)"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense"
+                                              Class="shadcn-input mb-4"
+                                              MaxLength="6" />
+
+                                <div class="d-flex flex-wrap gap-3 justify-end">
+                                    <MudButton Variant="Variant.Text"
+                                               Color="Color.Secondary"
+                                               Disabled="@isEmailOtpSubmitting"
+                                               OnClick="CancelEmailOtpSetup">
+                                        Cancel
+                                    </MudButton>
+                                    <MudButton ButtonType="ButtonType.Submit"
+                                               Variant="Variant.Filled"
+                                               Color="Color.Primary"
+                                               Disabled="@isEmailOtpSubmitting">
+                                        @(isEmailOtpSubmitting ? "Verifying..." : "Enable Email OTP")
+                                    </MudButton>
+                                </div>
+                            </EditForm>
+                        }
+                        else if (!mfaStatus.IsEmailOtpEnabled)
+                        {
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Disabled="@(isEmailOtpSubmitting || !mfaStatus.IsEmailConfirmed)"
+                                       OnClick="HandleBeginEmailOtpSetup">
+                                Send Setup Code
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Error"
+                                       Disabled="@isEmailOtpSubmitting"
+                                       OnClick="OpenEmailOtpDisable">
+                                Disable Email OTP
+                            </MudButton>
+                        }
+
+                        @if (emailOtpDisableOpen)
+                        {
+                            <MudPaper Outlined="true" Class="pa-4 mt-5" Style="background: var(--bg-background);">
+                                <MudText Typo="Typo.subtitle1" Class="mb-2">Disable Email OTP MFA</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                                    Confirm this action with exactly one method: your current password, an authenticator code, or a recovery code.
+                                </MudText>
+
+                                <EditForm Model="@emailOtpDisableModel" OnValidSubmit="HandleDisableEmailOtpAsync">
+                                    <DataAnnotationsValidator />
+                                    <MudGrid Spacing="3">
+                                        <MudItem xs="12" sm="4">
+                                            <MudTextField Label="Current password"
+                                                          @bind-Value="emailOtpDisableModel.CurrentPassword"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense"
+                                                          InputType="InputType.Password"
+                                                          Class="shadcn-input" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="4">
+                                            <MudTextField Label="Authenticator code"
+                                                          @bind-Value="emailOtpDisableModel.TwoFactorCode"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense"
+                                                          Class="shadcn-input"
+                                                          MaxLength="6" />
+                                        </MudItem>
+                                        <MudItem xs="12" sm="4">
+                                            <MudTextField Label="Recovery code"
+                                                          @bind-Value="emailOtpDisableModel.RecoveryCode"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense"
+                                                          Class="shadcn-input" />
+                                        </MudItem>
+                                    </MudGrid>
+
+                                    <div class="d-flex flex-wrap gap-3 justify-end mt-4">
+                                        <MudButton Variant="Variant.Text"
+                                                   Color="Color.Secondary"
+                                                   Disabled="@isEmailOtpSubmitting"
+                                                   OnClick="CancelEmailOtpDisable">
+                                            Cancel
+                                        </MudButton>
+                                        <MudButton ButtonType="ButtonType.Submit"
+                                                   Variant="Variant.Filled"
+                                                   Color="Color.Error"
+                                                   Disabled="@isEmailOtpSubmitting">
+                                            @(isEmailOtpSubmitting ? "Working..." : "Disable Email OTP")
+                                        </MudButton>
+                                    </div>
+                                </EditForm>
+                            </MudPaper>
+                        }
+                    }
+                </MudCardContent>
+            </MudCard>
         </MudTabPanel>
     </MudTabs>
 </MudContainer>
@@ -335,7 +479,9 @@
     private UpdateProfileDTO profileModel = new();
     private ChangePasswordDTO passwordModel = new();
     private VerifyAuthenticatorSetupDTO mfaVerificationModel = new();
+    private VerifyEmailOtpMfaDTO emailOtpVerificationModel = new();
     private MfaReauthenticationDTO mfaReauthenticationModel = new();
+    private MfaReauthenticationDTO emailOtpDisableModel = new();
     private MfaStatusDTO mfaStatus = new();
     private MfaSetupDTO? mfaSetup;
     private List<string> latestRecoveryCodes = new();
@@ -344,8 +490,11 @@
     private bool isMfaLoading = true;
     private bool isMfaSubmitting;
     private bool isSensitiveActionSubmitting;
+    private bool isEmailOtpSubmitting;
     private string currentEmail = string.Empty;
     private string? sensitiveAction;
+    private bool emailOtpSetupPending;
+    private bool emailOtpDisableOpen;
 
     protected override async Task OnInitializedAsync()
     {
@@ -388,6 +537,7 @@
             profileModel.Email = refreshedProfile.Email;
             profileModel.FullName = refreshedProfile.FullName;
             currentEmail = refreshedProfile.Email;
+            await LoadMfaStatusAsync();
             var successMessage = emailChanged
                 ? "Profile updated successfully. Please confirm your new email address before your next sign in."
                 : "Profile updated successfully.";
@@ -489,6 +639,102 @@
         mfaVerificationModel = new VerifyAuthenticatorSetupDTO();
     }
 
+    private async Task HandleBeginEmailOtpSetup()
+    {
+        isEmailOtpSubmitting = true;
+        try
+        {
+            await AuthService.SendEmailOtpSetupCode();
+            emailOtpVerificationModel = new VerifyEmailOtpMfaDTO();
+            emailOtpSetupPending = true;
+            emailOtpDisableOpen = false;
+            Snackbar.Add("Email verification code sent.", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to begin Email OTP MFA setup.");
+            Snackbar.Add(
+                string.IsNullOrWhiteSpace(ex.Message)
+                    ? "Unable to send an email verification code. Please try again."
+                    : ex.Message,
+                Severity.Error);
+        }
+        finally
+        {
+            isEmailOtpSubmitting = false;
+        }
+    }
+
+    private async Task HandleVerifyEmailOtpSetup()
+    {
+        isEmailOtpSubmitting = true;
+        try
+        {
+            await AuthService.VerifyEmailOtpSetup(emailOtpVerificationModel);
+            emailOtpVerificationModel = new VerifyEmailOtpMfaDTO();
+            emailOtpSetupPending = false;
+            await LoadMfaStatusAsync();
+            Snackbar.Add("Email OTP MFA is now enabled.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to verify Email OTP MFA setup.");
+            Snackbar.Add(
+                string.IsNullOrWhiteSpace(ex.Message)
+                    ? "Unable to verify the email code. Please try again."
+                    : ex.Message,
+                Severity.Error);
+        }
+        finally
+        {
+            isEmailOtpSubmitting = false;
+        }
+    }
+
+    private void CancelEmailOtpSetup()
+    {
+        emailOtpSetupPending = false;
+        emailOtpVerificationModel = new VerifyEmailOtpMfaDTO();
+    }
+
+    private void OpenEmailOtpDisable()
+    {
+        emailOtpDisableOpen = true;
+        emailOtpSetupPending = false;
+        emailOtpDisableModel = new MfaReauthenticationDTO();
+    }
+
+    private void CancelEmailOtpDisable()
+    {
+        emailOtpDisableOpen = false;
+        emailOtpDisableModel = new MfaReauthenticationDTO();
+    }
+
+    private async Task HandleDisableEmailOtpAsync()
+    {
+        isEmailOtpSubmitting = true;
+        try
+        {
+            await AuthService.DisableEmailOtp(emailOtpDisableModel);
+            CancelEmailOtpDisable();
+            await LoadMfaStatusAsync();
+            Snackbar.Add("Email OTP MFA has been disabled.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to disable Email OTP MFA.");
+            Snackbar.Add(
+                string.IsNullOrWhiteSpace(ex.Message)
+                    ? "Unable to disable Email OTP MFA. Please try again."
+                    : ex.Message,
+                Severity.Error);
+        }
+        finally
+        {
+            isEmailOtpSubmitting = false;
+        }
+    }
+
     private void OpenSensitiveAction(string action)
     {
         sensitiveAction = action;
@@ -552,7 +798,7 @@
     {
         ResetAction => "Reset authenticator app",
         RegenerateAction => "Regenerate recovery codes",
-        DisableAction => "Disable MFA",
+        DisableAction => "Disable authenticator app MFA",
         _ => "Confirm action"
     };
 
@@ -560,7 +806,7 @@
     {
         ResetAction => "Reset Authenticator",
         RegenerateAction => "Regenerate Codes",
-        DisableAction => "Disable MFA",
+        DisableAction => "Disable Authenticator",
         _ => "Confirm"
     };
 

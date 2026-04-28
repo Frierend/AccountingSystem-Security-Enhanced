@@ -13,5 +13,6 @@ namespace AccountingSystem.API.Security
 
     public sealed record MfaLoginVerificationResult(
         ApplicationUser IdentityUser,
-        bool UsedRecoveryCode);
+        bool UsedRecoveryCode,
+        string Method = "AuthenticatorApp");
 }

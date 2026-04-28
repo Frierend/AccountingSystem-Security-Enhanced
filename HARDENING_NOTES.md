@@ -5,12 +5,14 @@
 The following controls are implemented in the current codebase:
 
 1. Shared password policy validation for registration and password-change paths.
-2. Account lockout tracking with configurable defaults (5 failed attempts, 15-minute lockout).
+2. Account lockout tracking with configurable defaults (5 failed attempts, 5-minute demo lockout).
 3. Endpoint-level auth rate limiting (login, register-company, forgot/reset password, confirm/resend confirmation, MFA routes).
 4. JWT validation settings with explicit issuer, audience, signing key, expiry, and configurable clock skew.
 5. Auth security event logging through dedicated service-level audit writes.
 6. Sanitized non-auth request logging in middleware for state-changing operations.
-7. CI security-tooling evidence via GitHub Actions:
+7. Optional Authenticator App MFA, Email OTP MFA, and recovery codes.
+8. PayMongo webhook HMAC signature validation with replay-window checking.
+9. CI security-tooling evidence via GitHub Actions:
    - `.github/workflows/security-tooling-evidence.yml` (build/test, dependency vulnerability report artifact, gitleaks report-first secret scan)
    - `.github/workflows/codeql.yml` (CodeQL static analysis for C#)
 
@@ -19,6 +21,7 @@ The following controls are implemented in the current codebase:
 - Tenant-level business mutation events are captured in `AuditLogs`.
 - Auth and account-security events are captured through `AuthSecurityAuditService`.
 - Super-admin governance actions are captured in `SuperAdminAuditLogs`.
+- SuperAdmin-account login failures, lockouts, CAPTCHA-required events, MFA challenges, and successful logins are mirrored into `SuperAdminAuditLogs`.
 - Development email fallback logs reset/confirmation links when SMTP is not configured.
 
 ## Incident Response Plan
@@ -53,14 +56,13 @@ The following controls are implemented in the current codebase:
 
 ## Known Limitations
 
-- **Known Limitation:** PayMongo webhook signature verification still requires cryptographic hardening.
 - **Known Limitation:** JWT tokens are stored in browser local storage, which increases risk if XSS exists.
-- **Known Limitation:** Some auth endpoints still return raw exception messages in API responses.
+- **Known Limitation:** Email OTP challenges are stored in memory for this demo build; pending codes are lost if the API restarts.
 
 ## Recommended Improvements
 
-- **Recommended Improvement:** implement strict webhook signature validation and replay protection for payment webhooks.
 - **Recommended Improvement:** normalize auth error responses to standardized sanitized error contracts.
+- **Recommended Improvement:** use database or distributed-cache backed Email OTP challenge storage for production or multi-instance deployments.
 - **Recommended Improvement:** add refresh-token and revocation capabilities for stronger token lifecycle control.
 - **Recommended Improvement:** tighten CI security policy gates after baseline triage (for example, fail-on-severity thresholds for dependency/secret findings).
 
@@ -71,6 +73,7 @@ The following controls are implemented in the current codebase:
 - [x] Auth endpoint rate-limiting policies
 - [x] Auth security audit events
 - [x] Tenant and super-admin audit logging
+- [x] SuperAdmin-account auth event mirroring
 - [x] JWT validation configuration and middleware path
 - [x] CI security tooling evidence (build/test, dependency scan report, secret scan evidence, CodeQL)
-- [ ] Webhook signature verification hardening (remaining work)
+- [x] PayMongo webhook signature verification hardening

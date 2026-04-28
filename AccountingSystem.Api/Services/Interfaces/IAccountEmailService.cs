@@ -5,5 +5,7 @@ namespace AccountingSystem.API.Services.Interfaces
         Task SendPasswordResetAsync(string email, string fullName, string resetLink, CancellationToken cancellationToken = default);
 
         Task SendEmailConfirmationAsync(string email, string fullName, string confirmationLink, CancellationToken cancellationToken = default);
+
+        Task SendEmailOtpAsync(string email, string fullName, string otpCode, int expiresInMinutes, CancellationToken cancellationToken = default);
     }
 }

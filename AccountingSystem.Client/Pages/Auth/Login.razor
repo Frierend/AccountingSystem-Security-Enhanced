@@ -602,7 +602,12 @@
 
             if (result.RequiresTwoFactor)
             {
-                PendingMfaLoginState.Set(result.TwoFactorChallengeToken, result.Email);
+                PendingMfaLoginState.Set(
+                    result.TwoFactorChallengeToken,
+                    result.Email,
+                    result.AvailableTwoFactorMethods,
+                    result.PreferredTwoFactorMethod,
+                    result.EmailOtpSent);
                 Snackbar.Add(
                     string.IsNullOrWhiteSpace(result.Message)
                         ? "Enter your Google Authenticator code to continue."

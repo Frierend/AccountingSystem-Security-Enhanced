@@ -26,7 +26,7 @@
             <p class="auth-subtitle">
                 @if (PendingMfaLoginState.HasPendingChallenge)
                 {
-                    <span>Enter the 6-digit code from your authenticator app for <strong>@PendingMfaLoginState.Email</strong>.</span>
+                    <span>@GetChallengeSubtitle()</span>
                 }
                 else
                 {
@@ -52,114 +52,185 @@
         else
         {
             <MudTabs Rounded="true" Elevation="0" Class="shadcn-tabs" PanelClass="pt-6">
-                <MudTabPanel Text="Authenticator App">
-                    <EditForm Model="@mfaLoginModel" OnSubmit="HandleAuthenticatorLogin">
-                        <DataAnnotationsValidator />
+                @if (SupportsAuthenticatorApp)
+                {
+                    <MudTabPanel Text="Authenticator App">
+                        <EditForm Model="@mfaLoginModel" OnSubmit="HandleAuthenticatorLogin">
+                            <DataAnnotationsValidator />
 
-                        <div class="form-group">
-                            <label class="form-label">6-Digit Code</label>
-                            <div class="otp-input-container">
-                                @for (int i = 0; i < 6; i++)
-                                {
-                                    var index = i;
-                                    <input type="text"
-                                           inputmode="numeric"
-                                           maxlength="1"
-                                           class="otp-digit-box"
-                                           value="@otpDigits[index]"
-                                           @ref="otpInputRefs[index]"
-                                           @oninput="(e) => HandleOtpInput(index, e)"
-                                           @onkeydown="(e) => HandleOtpKeyDown(index, e)"
-                                           @onfocus="() => HandleOtpFocus(index)"
-                                           @onpaste="HandleOtpPaste"
-                                           disabled="@isSubmitting" />
-                                }
+                            <div class="form-group">
+                                <label class="form-label">6-Digit Code</label>
+                                <div class="otp-input-container">
+                                    @for (int i = 0; i < 6; i++)
+                                    {
+                                        var index = i;
+                                        <input type="text"
+                                               inputmode="numeric"
+                                               maxlength="1"
+                                               class="otp-digit-box"
+                                               value="@otpDigits[index]"
+                                               @ref="otpInputRefs[index]"
+                                               @oninput="(e) => HandleOtpInput(index, e)"
+                                               @onkeydown="(e) => HandleOtpKeyDown(index, e)"
+                                               @onfocus="() => HandleOtpFocus(index)"
+                                               @onpaste="HandleOtpPaste"
+                                               disabled="@isSubmitting" />
+                                    }
+                                </div>
                             </div>
-                        </div>
 
-                        @if (!string.IsNullOrWhiteSpace(errorMessage))
-                        {
-                            <div class="auth-alert alert-error mb-4">
-                                <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Size="Size.Small" />
-                                <span>@errorMessage</span>
+                            @if (!string.IsNullOrWhiteSpace(errorMessage))
+                            {
+                                <div class="auth-alert alert-error mb-4">
+                                    <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Size="Size.Small" />
+                                    <span>@errorMessage</span>
+                                </div>
+                            }
+
+                            <div class="d-flex gap-3 mt-6">
+                                <MudButton Variant="Variant.Outlined"
+                                           Class="shadcn-btn-outline"
+                                           Href="/"
+                                           Style="flex: 1;">
+                                    Cancel
+                                </MudButton>
+                                <MudButton ButtonType="ButtonType.Submit"
+                                           Variant="Variant.Filled"
+                                           Class="shadcn-btn-primary"
+                                           Disabled="@isSubmitting"
+                                           Style="flex: 2;">
+                                    @if (isSubmitting)
+                                    {
+                                        <MudProgressCircular Class="ms-n1 me-2" Size="Size.Small" Indeterminate="true" />
+                                        <span>Verifying...</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Verify</span>
+                                    }
+                                </MudButton>
                             </div>
-                        }
+                        </EditForm>
+                    </MudTabPanel>
+                }
 
-                        <div class="d-flex gap-3 mt-6">
-                            <MudButton Variant="Variant.Outlined"
-                                       Class="shadcn-btn-outline"
-                                       Href="/"
-                                       Style="flex: 1;">
-                                Cancel
-                            </MudButton>
-                            <MudButton ButtonType="ButtonType.Submit"
-                                       Variant="Variant.Filled"
-                                       Class="shadcn-btn-primary"
-                                       Disabled="@isSubmitting"
-                                       Style="flex: 2;">
-                                @if (isSubmitting)
-                                {
-                                    <MudProgressCircular Class="ms-n1 me-2" Size="Size.Small" Indeterminate="true" />
-                                    <span>Verifying...</span>
-                                }
-                                else
-                                {
-                                    <span>Verify</span>
-                                }
-                            </MudButton>
-                        </div>
-                    </EditForm>
-                </MudTabPanel>
+                @if (SupportsEmailOtp)
+                {
+                    <MudTabPanel Text="Email OTP">
+                        <EditForm Model="@mfaLoginModel" OnSubmit="HandleEmailOtpLogin">
+                            <DataAnnotationsValidator />
 
-                <MudTabPanel Text="Recovery Code">
-                    <EditForm Model="@mfaLoginModel" OnSubmit="HandleRecoveryCodeLogin">
-                        <DataAnnotationsValidator />
-
-                        <div class="form-group">
-                            <label class="form-label">Recovery Code</label>
-                            <input type="text"
-                                   class="recovery-code-input"
-                                   placeholder="XXXXX-XXXXX"
-                                   value="@recoveryCodeDisplay"
-                                   @oninput="HandleRecoveryCodeInput"
-                                   maxlength="11"
-                                   disabled="@isSubmitting" />
-                            <div class="form-helper mt-1">Recovery codes are single-use only.</div>
-                        </div>
-
-                        @if (!string.IsNullOrWhiteSpace(errorMessage))
-                        {
-                            <div class="auth-alert alert-error mb-4">
-                                <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Size="Size.Small" />
-                                <span>@errorMessage</span>
+                            <div class="form-group">
+                                <label class="form-label">Email Code</label>
+                                <MudTextField @bind-Value="emailOtpCode"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense"
+                                              Class="shadcn-input"
+                                              MaxLength="6"
+                                              Placeholder="000000"
+                                              Disabled="@isSubmitting" />
+                                <div class="form-helper mt-1">The code is sent to @PendingMfaLoginState.Email and expires after a few minutes.</div>
                             </div>
-                        }
 
-                        <div class="d-flex gap-3 mt-6">
-                            <MudButton Variant="Variant.Outlined"
-                                       Class="shadcn-btn-outline"
-                                       Href="/"
-                                       Style="flex: 1;">
-                                Cancel
-                            </MudButton>
-                            <MudButton ButtonType="ButtonType.Submit"
-                                       Variant="Variant.Filled"
-                                       Class="shadcn-btn-primary"
-                                       Disabled="@isSubmitting"
-                                       Style="flex: 2;">
-                                @if (isSubmitting)
-                                {
-                                    <MudProgressCircular Class="ms-n1 me-2" Size="Size.Small" Indeterminate="true" />
-                                    <span>Verifying...</span>
-                                }
-                                else
-                                {
-                                    <span>Use Code</span>
-                                }
-                            </MudButton>
-                        </div>
-                    </EditForm>
-                </MudTabPanel>
+                            @if (!PendingMfaLoginState.EmailOtpSent)
+                            {
+                                <MudButton Variant="Variant.Outlined"
+                                           Class="shadcn-btn-outline mt-3"
+                                           ButtonType="ButtonType.Button"
+                                           FullWidth="true"
+                                           Disabled="@isSubmitting"
+                                           OnClick="HandleSendEmailOtp">
+                                    Send Email Code
+                                </MudButton>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(errorMessage))
+                            {
+                                <div class="auth-alert alert-error mb-4 mt-4">
+                                    <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Size="Size.Small" />
+                                    <span>@errorMessage</span>
+                                </div>
+                            }
+
+                            <div class="d-flex gap-3 mt-6">
+                                <MudButton Variant="Variant.Outlined"
+                                           Class="shadcn-btn-outline"
+                                           Href="/"
+                                           Style="flex: 1;">
+                                    Cancel
+                                </MudButton>
+                                <MudButton ButtonType="ButtonType.Submit"
+                                           Variant="Variant.Filled"
+                                           Class="shadcn-btn-primary"
+                                           Disabled="@isSubmitting"
+                                           Style="flex: 2;">
+                                    @if (isSubmitting)
+                                    {
+                                        <MudProgressCircular Class="ms-n1 me-2" Size="Size.Small" Indeterminate="true" />
+                                        <span>Verifying...</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Verify Code</span>
+                                    }
+                                </MudButton>
+                            </div>
+                        </EditForm>
+                    </MudTabPanel>
+                }
+
+                @if (SupportsAuthenticatorApp)
+                {
+                    <MudTabPanel Text="Recovery Code">
+                        <EditForm Model="@mfaLoginModel" OnSubmit="HandleRecoveryCodeLogin">
+                            <DataAnnotationsValidator />
+
+                            <div class="form-group">
+                                <label class="form-label">Recovery Code</label>
+                                <input type="text"
+                                       class="recovery-code-input"
+                                       placeholder="XXXXX-XXXXX"
+                                       value="@recoveryCodeDisplay"
+                                       @oninput="HandleRecoveryCodeInput"
+                                       maxlength="11"
+                                       disabled="@isSubmitting" />
+                                <div class="form-helper mt-1">Recovery codes are single-use only.</div>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(errorMessage))
+                            {
+                                <div class="auth-alert alert-error mb-4">
+                                    <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Size="Size.Small" />
+                                    <span>@errorMessage</span>
+                                </div>
+                            }
+
+                            <div class="d-flex gap-3 mt-6">
+                                <MudButton Variant="Variant.Outlined"
+                                           Class="shadcn-btn-outline"
+                                           Href="/"
+                                           Style="flex: 1;">
+                                    Cancel
+                                </MudButton>
+                                <MudButton ButtonType="ButtonType.Submit"
+                                           Variant="Variant.Filled"
+                                           Class="shadcn-btn-primary"
+                                           Disabled="@isSubmitting"
+                                           Style="flex: 2;">
+                                    @if (isSubmitting)
+                                    {
+                                        <MudProgressCircular Class="ms-n1 me-2" Size="Size.Small" Indeterminate="true" />
+                                        <span>Verifying...</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Use Code</span>
+                                    }
+                                </MudButton>
+                            </div>
+                        </EditForm>
+                    </MudTabPanel>
+                }
             </MudTabs>
         }
 
@@ -429,6 +500,11 @@
 
     // Recovery code display (with hyphen)
     private string recoveryCodeDisplay = string.Empty;
+    private string emailOtpCode = string.Empty;
+
+    private bool SupportsAuthenticatorApp => PendingMfaLoginState.SupportsMethod(MfaLoginMethods.AuthenticatorApp);
+
+    private bool SupportsEmailOtp => PendingMfaLoginState.SupportsMethod(MfaLoginMethods.EmailOtp);
 
     protected override async Task OnInitializedAsync()
     {
@@ -504,6 +580,21 @@
         mfaLoginModel.TwoFactorCode = string.Concat(otpDigits);
     }
 
+    private string GetChallengeSubtitle()
+    {
+        if (SupportsAuthenticatorApp && SupportsEmailOtp)
+        {
+            return $"Enter your authenticator app code for {PendingMfaLoginState.Email}, or choose Email OTP.";
+        }
+
+        if (SupportsEmailOtp)
+        {
+            return $"Enter the 6-digit code sent to {PendingMfaLoginState.Email}.";
+        }
+
+        return $"Enter the 6-digit code from your authenticator app for {PendingMfaLoginState.Email}.";
+    }
+
     // Recovery code input handler
     private void HandleRecoveryCodeInput(ChangeEventArgs e)
     {
@@ -540,7 +631,7 @@
             errorMessage = "Please enter all 6 digits.";
             return;
         }
-        await CompleteLoginAsync(useRecoveryCode: false);
+        await CompleteLoginAsync(MfaLoginMethods.AuthenticatorApp);
     }
 
     private async Task HandleRecoveryCodeLogin()
@@ -552,10 +643,56 @@
             errorMessage = "Please enter your full recovery code.";
             return;
         }
-        await CompleteLoginAsync(useRecoveryCode: true);
+        await CompleteLoginAsync(MfaLoginMethods.RecoveryCode);
     }
 
-    private async Task CompleteLoginAsync(bool useRecoveryCode)
+    private async Task HandleSendEmailOtp()
+    {
+        if (!PendingMfaLoginState.HasPendingChallenge)
+        {
+            NavManager.NavigateTo("/");
+            return;
+        }
+
+        isSubmitting = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            await AuthService.SendLoginEmailOtp(new SendLoginEmailOtpDTO
+            {
+                ChallengeToken = PendingMfaLoginState.ChallengeToken
+            });
+            PendingMfaLoginState.MarkEmailOtpSent();
+            Snackbar.Add("Email verification code sent.", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = string.IsNullOrWhiteSpace(ex.Message)
+                ? "Unable to send an email verification code. Please try again."
+                : ex.Message;
+            Logger.LogError(ex, "Failed to send login Email OTP.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task HandleEmailOtpLogin()
+    {
+        var normalizedCode = new string((emailOtpCode ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (normalizedCode.Length < 6)
+        {
+            errorMessage = "Please enter the 6-digit email code.";
+            return;
+        }
+
+        emailOtpCode = normalizedCode;
+        await CompleteLoginAsync(MfaLoginMethods.EmailOtp);
+    }
+
+    private async Task CompleteLoginAsync(string method)
     {
         if (!PendingMfaLoginState.HasPendingChallenge)
         {
@@ -569,9 +706,15 @@
         try
         {
             mfaLoginModel.ChallengeToken = PendingMfaLoginState.ChallengeToken;
-            if (useRecoveryCode)
+            mfaLoginModel.Method = method;
+            if (method == MfaLoginMethods.RecoveryCode)
             {
                 mfaLoginModel.TwoFactorCode = string.Empty;
+            }
+            else if (method == MfaLoginMethods.EmailOtp)
+            {
+                mfaLoginModel.TwoFactorCode = emailOtpCode;
+                mfaLoginModel.RecoveryCode = string.Empty;
             }
             else
             {
@@ -581,12 +724,14 @@
             var result = await AuthService.CompleteMfaLogin(mfaLoginModel);
             PendingMfaLoginState.Clear();
             mfaLoginModel.ChallengeToken = string.Empty;
+            mfaLoginModel.Method = string.Empty;
             mfaLoginModel.TwoFactorCode = string.Empty;
             mfaLoginModel.RecoveryCode = string.Empty;
 
             // Clear the UI state
             Array.Clear(otpDigits, 0, otpDigits.Length);
             recoveryCodeDisplay = string.Empty;
+            emailOtpCode = string.Empty;
 
             Snackbar.Add("Welcome back! Verification successful.", Severity.Success);
             

@@ -135,6 +135,7 @@
                             <MudSelectItem T="string" Value='@("All")'>All Actions</MudSelectItem>
                             <MudSelectItem T="string" Value='@("COMPANY_STATUS_CHANGE")'>Company Status</MudSelectItem>
                             <MudSelectItem T="string" Value='@("USER_STATUS_CHANGE")'>User Status</MudSelectItem>
+                            <MudSelectItem T="string" Value='@("SUPERADMIN-AUTH")'>Security/Auth</MudSelectItem>
                         </MudSelect>
 
                         <MudSelect T="string"
@@ -145,6 +146,7 @@
                             <MudSelectItem T="string" Value='@("All")'>All Targets</MudSelectItem>
                             <MudSelectItem T="string" Value='@("Company")'>Companies</MudSelectItem>
                             <MudSelectItem T="string" Value='@("User")'>Users</MudSelectItem>
+                            <MudSelectItem T="string" Value='@("SuperAdminAccount")'>SuperAdmin Accounts</MudSelectItem>
                         </MudSelect>
                     </div>
                 </div>
@@ -250,6 +252,11 @@
     {
         "COMPANY_STATUS_CHANGE" => "Company Status",
         "USER_STATUS_CHANGE" => "User Status",
+        "SUPERADMIN-AUTH-LOGIN-FAILURE" => "Login Failure",
+        "SUPERADMIN-AUTH-LOCKOUT" => "Lockout",
+        "SUPERADMIN-AUTH-CAPTCHA-REQUIRED" => "CAPTCHA Required",
+        "SUPERADMIN-AUTH-MFA-CHALLENGE" => "MFA Challenge",
+        "SUPERADMIN-AUTH-LOGIN-SUCCESS" => "Login Success",
         _ => action
     };
 
@@ -257,6 +264,7 @@
     {
         "COMPANY_STATUS_CHANGE" => "badge-blue",
         "USER_STATUS_CHANGE" => "badge-indigo",
+        var value when value.StartsWith("SUPERADMIN-AUTH", StringComparison.OrdinalIgnoreCase) => "badge-red",
         _ => "badge-slate"
     };
 
@@ -264,6 +272,7 @@
     {
         "Company" => Icons.Material.Outlined.Business,
         "User" => Icons.Material.Outlined.Person,
+        "SuperAdminAccount" => Icons.Material.Outlined.Security,
         _ => Icons.Material.Outlined.Info
     };
 
@@ -280,10 +289,14 @@
     {
         bool matchesSearch = string.IsNullOrWhiteSpace(searchString) ||
             element.AdminEmail.Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
+            element.Action.Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
             element.TargetName.Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
             element.Details.Contains(searchString, StringComparison.OrdinalIgnoreCase);
 
-        bool matchesAction = actionFilter == "All" || element.Action == actionFilter;
+        bool matchesAction = actionFilter == "All" ||
+            (actionFilter == "SUPERADMIN-AUTH"
+                ? element.Action.StartsWith("SUPERADMIN-AUTH", StringComparison.OrdinalIgnoreCase)
+                : element.Action == actionFilter);
         bool matchesTarget = targetFilter == "All" || element.TargetType == targetFilter;
 
         return matchesSearch && matchesAction && matchesTarget;

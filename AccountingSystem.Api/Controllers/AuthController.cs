@@ -79,8 +79,7 @@ namespace AccountingSystem.API.Controllers
             {
                 _logger.LogWarning(
                     ex,
-                    "MFA login attempt failed for challenge token {ChallengeToken}. StatusCode: {StatusCode}.",
-                    dto.ChallengeToken,
+                    "MFA login attempt failed. StatusCode: {StatusCode}.",
                     ex.StatusCode);
 
                 if (ex.StatusCode == StatusCodes.Status401Unauthorized)
@@ -92,10 +91,33 @@ namespace AccountingSystem.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during MFA login for challenge token {ChallengeToken}.", dto.ChallengeToken);
+                _logger.LogError(ex, "Unexpected error during MFA login.");
                 return StatusCode(
                     StatusCodes.Status500InternalServerError,
                     new { error = "An unexpected error occurred. Please try again later." });
+            }
+        }
+
+        [HttpPost("login/mfa/email/send")]
+        [EnableRateLimiting(AuthRateLimitPolicyNames.LoginMfa)]
+        public async Task<IActionResult> SendLoginEmailOtp([FromBody] SendLoginEmailOtpDTO dto)
+        {
+            try
+            {
+                await _authService.SendLoginEmailOtpAsync(dto);
+                return Ok(new { message = "If the verification session is valid, an email code has been sent." });
+            }
+            catch (AuthFailureException ex)
+            {
+                _logger.LogWarning(ex, "Email OTP send request failed during MFA login. StatusCode: {StatusCode}.", ex.StatusCode);
+                return StatusCode(ex.StatusCode, new { error = ex.PublicMessage });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error while sending login email OTP.");
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new { error = "Unable to send an email verification code right now. Please try again later." });
             }
         }
 
@@ -320,6 +342,60 @@ namespace AccountingSystem.API.Controllers
             {
                 _logger.LogError(ex, "Failed to disable MFA for user {UserId}.", TryGetCurrentUserId());
                 return BadRequest(new { error = "Unable to disable MFA. Please verify your credentials and try again." });
+            }
+        }
+
+        [HttpPost("mfa/email/setup")]
+        [Authorize]
+        [EnableRateLimiting(AuthRateLimitPolicyNames.MfaManage)]
+        public async Task<IActionResult> SendEmailOtpSetupCode()
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _authService.SendEmailOtpSetupCodeAsync(userId);
+                return Ok(new { message = "A verification code has been sent to your confirmed email address." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send Email OTP setup code for user {UserId}.", TryGetCurrentUserId());
+                return BadRequest(new { error = "Unable to send an email verification code. Confirm your email address and try again." });
+            }
+        }
+
+        [HttpPost("mfa/email/verify")]
+        [Authorize]
+        [EnableRateLimiting(AuthRateLimitPolicyNames.MfaManage)]
+        public async Task<IActionResult> VerifyEmailOtpSetup([FromBody] VerifyEmailOtpMfaDTO dto)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _authService.EnableEmailOtpMfaAsync(userId, dto);
+                return Ok(new { message = "Email OTP MFA has been enabled." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to verify Email OTP setup for user {UserId}.", TryGetCurrentUserId());
+                return BadRequest(new { error = "Unable to verify the email code. Please request a new code and try again." });
+            }
+        }
+
+        [HttpPost("mfa/email/disable")]
+        [Authorize]
+        [EnableRateLimiting(AuthRateLimitPolicyNames.MfaManage)]
+        public async Task<IActionResult> DisableEmailOtp([FromBody] MfaReauthenticationDTO dto)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                await _authService.DisableEmailOtpMfaAsync(userId, dto);
+                return Ok(new { message = "Email OTP MFA has been disabled." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to disable Email OTP MFA for user {UserId}.", TryGetCurrentUserId());
+                return BadRequest(new { error = "Unable to disable Email OTP MFA. Please verify your credentials and try again." });
             }
         }
 

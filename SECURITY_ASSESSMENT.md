@@ -16,10 +16,11 @@ This document is descriptive only and does not alter code, schema, migrations, o
 | Reset password | Implemented | `POST /api/auth/reset-password`, `AuthService.ResetPasswordAsync` |
 | Email confirmation | Implemented | `POST /api/auth/confirm-email`, `AuthService.ConfirmEmailAsync` |
 | Resend confirmation | Implemented | `POST /api/auth/resend-confirmation`, `AuthService.ResendConfirmationAsync` |
-| MFA (TOTP + recovery codes) | Implemented partially | `/api/auth/login/mfa` and `/api/auth/mfa/*` endpoints |
+| MFA (Authenticator App, Email OTP, recovery codes) | Implemented | `/api/auth/login/mfa`, `/api/auth/login/mfa/email/send`, and `/api/auth/mfa/*` endpoints |
 | Registration bot protection | Implemented | reCAPTCHA token from `RegisterCompany.razor` validated by `CaptchaService` |
+| Adaptive login bot protection | Implemented | login reCAPTCHA is required only after repeated failed attempts |
 | PayMongo source + redirect payment flow | Implemented (test mode for project use) | `PaymentController.CreateSource`, client payment callback page |
-| PayMongo webhook verification hardening | Not fully implemented | `PaymentService.VerifyWebhookSignature` currently returns `true` |
+| PayMongo webhook verification hardening | Implemented | `PaymentService.VerifyWebhookSignature` validates HMAC signature and replay window |
 
 ## Password Storage and Policy
 
@@ -42,7 +43,8 @@ Password policy is enforced through `AccountingSystem.Shared/Validation/Password
 Default security controls from configuration and startup:
 
 - Lockout threshold: 5 failed attempts.
-- Lockout duration: 15 minutes.
+- Lockout duration: 5 minutes for demo/presentation.
+- The login UI intentionally avoids showing exact attempts left or a countdown. It uses generic messages to reduce attacker feedback.
 - Endpoint-specific rate limits exist for login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, and MFA management.
 
 ## Secret and Configuration Handling
@@ -64,23 +66,18 @@ Default security controls from configuration and startup:
 ## Logging and Monitoring
 
 - `AuditMiddleware` logs successful state-changing non-auth routes.
-- Auth security events are logged by `AuthSecurityAuditService` (login outcomes, lockouts, auth rate-limit events, etc.).
+- Auth security events are logged by `AuthSecurityAuditService` (login outcomes, lockouts, auth rate-limit events, MFA events, etc.).
 - Super-admin governance actions are logged in `SuperAdminAuditLogs`.
+- Failed login, lockout, CAPTCHA-required, MFA-challenge, and login-success events targeting SuperAdmin accounts are mirrored into SuperAdmin governance logs.
 
 ## Security Risks by Severity
-
-### Critical
-
-1. **Known Limitation:** PayMongo webhook signature verification is not hardened yet.
-   - Evidence: `PaymentService.VerifyWebhookSignature` currently returns `true`.
-   - Risk: anonymous callers can submit unverified webhook payloads.
 
 ### High
 
 1. **Known Limitation:** JWT token is stored in browser local storage.
    - Risk: token exposure risk increases if XSS is introduced.
-2. **Known Limitation:** Several auth endpoints return raw exception messages in API responses.
-   - Risk: inconsistent error handling and potential information disclosure.
+2. **Known Limitation:** Email OTP challenge storage is in-memory for demo use.
+   - Risk: pending OTP challenges are lost if the API restarts or scales across multiple instances without shared state.
 
 ### Medium
 
@@ -122,10 +119,11 @@ Default security controls from configuration and startup:
 - [x] Resend confirmation flow
 - [x] MFA login and MFA management endpoints
 - [x] reCAPTCHA-protected registration
+- [x] Adaptive login reCAPTCHA after repeated failed attempts
 - [x] PayMongo source/redirect test flow
 - [x] Protected dashboard and role-based pages
 - [x] Audit logs and auth security audit events
 
 ## Conclusion
 
-The project has a substantial implemented authentication and authorization foundation for IT16, including account recovery, email confirmation, MFA (partial scope), lockout, rate limiting, audit logging, and CI-backed security-tooling evidence. The most important remaining hardening items are webhook signature verification, safer auth error responses, stronger token lifecycle controls, and tightening CI security enforcement thresholds after baseline remediation.
+The project has a substantial implemented authentication and authorization foundation for IT16, including account recovery, email confirmation, optional Authenticator App MFA, optional Email OTP MFA, recovery codes, lockout, adaptive login reCAPTCHA, rate limiting, audit logging, PayMongo webhook signature validation, and CI-backed security-tooling evidence. The most important remaining hardening items are stronger token lifecycle controls, production-grade/shared Email OTP challenge storage, and tightening CI security enforcement thresholds after baseline remediation.

@@ -61,6 +61,29 @@ namespace AccountingSystem.API.Services
             await client.SendMailAsync(message);
         }
 
+        public async Task SendEmailOtpAsync(string email, string fullName, string otpCode, int expiresInMinutes, CancellationToken cancellationToken = default)
+        {
+            using var message = new MailMessage
+            {
+                From = new MailAddress(_smtpSettings.FromAddress, _smtpSettings.FromName),
+                Subject = "Your AccSys verification code",
+                IsBodyHtml = true,
+                Body = BuildEmailOtpBody(fullName, otpCode, expiresInMinutes)
+            };
+
+            message.To.Add(new MailAddress(email, fullName));
+
+            using var client = new SmtpClient(_smtpSettings.Host, _smtpSettings.Port)
+            {
+                EnableSsl = _smtpSettings.EnableSsl,
+                UseDefaultCredentials = false,
+                Credentials = new NetworkCredential(_smtpSettings.Username, _smtpSettings.Password)
+            };
+
+            cancellationToken.ThrowIfCancellationRequested();
+            await client.SendMailAsync(message);
+        }
+
         private static string BuildPasswordResetBody(string fullName, string resetLink)
         {
             var safeName = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(fullName) ? "there" : fullName);
@@ -208,6 +231,60 @@ namespace AccountingSystem.API.Services
                                         </td>
                                     </tr>
 
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                </body>
+                </html>
+                """;
+        }
+
+        private static string BuildEmailOtpBody(string fullName, string otpCode, int expiresInMinutes)
+        {
+            var safeName = WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(fullName) ? "there" : fullName);
+            var safeCode = WebUtility.HtmlEncode(otpCode);
+            var safeExpiry = WebUtility.HtmlEncode(expiresInMinutes.ToString());
+
+            return $"""
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8" />
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                    <title>Your AccSys verification code</title>
+                </head>
+                <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; -webkit-font-smoothing: antialiased; color: #0f172a;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc; padding: 40px 20px;">
+                        <tr>
+                            <td align="center">
+                                <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                                    <tr>
+                                        <td align="center" style="padding: 40px 40px 20px 40px; border-bottom: 1px solid #f1f5f9;">
+                                            <img src="https://ik.imagekit.io/t1ps8g845/AccsysLogo.png" alt="AccSys Logo" height="45" style="display: block; border: 0; outline: none; text-decoration: none;" />
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 40px;">
+                                            <h1 style="margin: 0 0 20px 0; font-size: 24px; font-weight: bold; color: #0f172a;">Verification code</h1>
+                                            <p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.5; color: #334155;">Hello {safeName},</p>
+                                            <p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.6; color: #475569;">Use this one-time code to continue your AccSys sign-in or security setup.</p>
+                                            <div style="font-size: 32px; letter-spacing: 8px; font-weight: bold; color: #0f172a; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 24px; text-align: center; margin-bottom: 24px;">{safeCode}</div>
+                                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+                                                <tr>
+                                                    <td style="padding: 16px; font-size: 13px; line-height: 1.5; color: #64748b;">
+                                                        <strong style="color: #334155;">Security Notice:</strong> This code expires in {safeExpiry} minutes and can be used only once. If you did not request it, ignore this email and consider changing your password.
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 40px; text-align: center;">
+                                            <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold; color: #334155;">AccSys Solutions</p>
+                                            <p style="margin: 0; font-size: 12px; color: #94a3b8;">This is an automated message. Please do not reply to this email.</p>
+                                        </td>
+                                    </tr>
                                 </table>
                             </td>
                         </tr>

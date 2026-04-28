@@ -18,6 +18,10 @@ namespace AccountingSystem.API.Services.Interfaces
         Task<RecoveryCodesDTO> VerifyAuthenticatorSetupAsync(int userId, VerifyAuthenticatorSetupDTO dto);
         Task<RecoveryCodesDTO> RegenerateRecoveryCodesAsync(int userId, MfaReauthenticationDTO dto);
         Task DisableMfaAsync(int userId, MfaReauthenticationDTO dto);
+        Task SendEmailOtpSetupCodeAsync(int userId);
+        Task EnableEmailOtpMfaAsync(int userId, VerifyEmailOtpMfaDTO dto);
+        Task DisableEmailOtpMfaAsync(int userId, MfaReauthenticationDTO dto);
+        Task SendLoginEmailOtpAsync(SendLoginEmailOtpDTO dto);
         Task ConfirmEmailAsync(ConfirmEmailDTO dto);
         Task ResendConfirmationAsync(ResendConfirmationDTO dto);
         Task SendPasswordResetAsync(ForgotPasswordDTO dto);

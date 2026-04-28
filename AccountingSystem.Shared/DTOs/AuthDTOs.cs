@@ -3,6 +3,13 @@ using System.ComponentModel.DataAnnotations;
 
 namespace AccountingSystem.Shared.DTOs
 {
+    public static class MfaLoginMethods
+    {
+        public const string AuthenticatorApp = "AuthenticatorApp";
+        public const string EmailOtp = "EmailOtp";
+        public const string RecoveryCode = "RecoveryCode";
+    }
+
     //  Profile & Password Management ---
     public class UpdateProfileDTO
     {
@@ -137,9 +144,17 @@ namespace AccountingSystem.Shared.DTOs
         [Required]
         public string ChallengeToken { get; set; } = string.Empty;
 
+        public string Method { get; set; } = string.Empty;
+
         public string TwoFactorCode { get; set; } = string.Empty;
 
         public string RecoveryCode { get; set; } = string.Empty;
+    }
+
+    public class SendLoginEmailOtpDTO
+    {
+        [Required]
+        public string ChallengeToken { get; set; } = string.Empty;
     }
 
     public class AuthResponseDTO
@@ -153,6 +168,9 @@ namespace AccountingSystem.Shared.DTOs
         public bool RequiresEmailConfirmation { get; set; }
         public bool RequiresTwoFactor { get; set; }
         public string TwoFactorChallengeToken { get; set; } = string.Empty;
+        public List<string> AvailableTwoFactorMethods { get; set; } = new();
+        public string PreferredTwoFactorMethod { get; set; } = string.Empty;
+        public bool EmailOtpSent { get; set; }
         public string Message { get; set; } = string.Empty;
     }
 
@@ -160,9 +178,17 @@ namespace AccountingSystem.Shared.DTOs
     {
         public bool IsTwoFactorEnabled { get; set; }
 
+        public bool IsAuthenticatorAppEnabled { get; set; }
+
         public bool HasAuthenticatorKey { get; set; }
 
         public int RecoveryCodesLeft { get; set; }
+
+        public bool IsEmailOtpEnabled { get; set; }
+
+        public bool IsEmailConfirmed { get; set; }
+
+        public string Email { get; set; } = string.Empty;
     }
 
     public class MfaSetupDTO
@@ -175,6 +201,12 @@ namespace AccountingSystem.Shared.DTOs
     }
 
     public class VerifyAuthenticatorSetupDTO
+    {
+        [Required]
+        public string Code { get; set; } = string.Empty;
+    }
+
+    public class VerifyEmailOtpMfaDTO
     {
         [Required]
         public string Code { get; set; } = string.Empty;

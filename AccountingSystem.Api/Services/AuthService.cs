@@ -17,7 +17,7 @@ namespace AccountingSystem.API.Services
     public class AuthService : IAuthService
     {
         private const int DefaultMaxFailedAccessAttempts = 5;
-        private const int DefaultLockoutMinutes = 15;
+        private const int DefaultLockoutMinutes = 5;
         private const int DefaultLoginCaptchaFailedAttemptThreshold = 3;
 
         private readonly AccountingDbContext _context;
@@ -295,6 +295,26 @@ namespace AccountingSystem.API.Services
             return _mfaService.DisableAsync(userId, dto);
         }
 
+        public Task SendEmailOtpSetupCodeAsync(int userId)
+        {
+            return _mfaService.SendEmailOtpSetupCodeAsync(userId);
+        }
+
+        public Task EnableEmailOtpMfaAsync(int userId, VerifyEmailOtpMfaDTO dto)
+        {
+            return _mfaService.EnableEmailOtpAsync(userId, dto);
+        }
+
+        public Task DisableEmailOtpMfaAsync(int userId, MfaReauthenticationDTO dto)
+        {
+            return _mfaService.DisableEmailOtpAsync(userId, dto);
+        }
+
+        public Task SendLoginEmailOtpAsync(SendLoginEmailOtpDTO dto)
+        {
+            return _mfaService.SendLoginEmailOtpAsync(dto);
+        }
+
         public async Task<AuthResponseDTO> RegisterCompanyAsync(CompanyRegisterDTO dto)
         {
             if (!await _captchaService.VerifyTokenAsync(dto.RecaptchaToken))
@@ -537,31 +557,76 @@ namespace AccountingSystem.API.Services
             var company = await RequireCompanyAsync(user);
             await ValidateLoginEligibilityAsync(user, company, identityUser);
 
-            if (identityUser != null && await _userManager.GetTwoFactorEnabledAsync(identityUser))
+            if (identityUser != null)
             {
-                var challengeToken = _loginChallengeTokenService.Create(new LoginChallengeTokenContext(
-                    identityUser.Id,
-                    user.Id));
-
-                await _auditService.WriteAsync(
-                    "AUTH-MFA-LOGIN-CHALLENGE",
-                    userId: user.Id,
-                    companyId: company.Id,
-                    email: user.Email,
-                    reason: user.Role.Name);
-
-                return new AuthResponseDTO
+                var authenticatorEnabled = await _userManager.GetTwoFactorEnabledAsync(identityUser);
+                var emailOtpEnabled = await _mfaService.IsEmailOtpEnabledAsync(identityUser);
+                var emailOtpAvailable = emailOtpEnabled && await _userManager.IsEmailConfirmedAsync(identityUser);
+                var availableMethods = new List<string>();
+                if (authenticatorEnabled)
                 {
-                    Token = string.Empty,
-                    Email = user.Email,
-                    Role = user.Role.Name,
-                    CompanyId = company.Id,
-                    CompanyName = company.Name,
-                    ExpiresAt = DateTime.MinValue,
-                    RequiresTwoFactor = true,
-                    TwoFactorChallengeToken = challengeToken,
-                    Message = "Enter the 6-digit code from Google Authenticator or a recovery code."
-                };
+                    availableMethods.Add(MfaLoginMethods.AuthenticatorApp);
+                    availableMethods.Add(MfaLoginMethods.RecoveryCode);
+                }
+
+                if (emailOtpAvailable)
+                {
+                    availableMethods.Add(MfaLoginMethods.EmailOtp);
+                }
+
+                if ((authenticatorEnabled || emailOtpEnabled) && availableMethods.Count == 0)
+                {
+                    await _auditService.WriteAsync(
+                        "AUTH-MFA-LOGIN-FAILURE",
+                        userId: user.Id,
+                        companyId: company.Id,
+                        email: user.Email,
+                        reason: "NoUsableMfaMethod");
+                    throw new AuthFailureException("NoUsableMfaMethod");
+                }
+
+                if (availableMethods.Count > 0)
+                {
+                    var challengeToken = _loginChallengeTokenService.Create(new LoginChallengeTokenContext(
+                        identityUser.Id,
+                        user.Id));
+                    var preferredMethod = authenticatorEnabled
+                        ? MfaLoginMethods.AuthenticatorApp
+                        : MfaLoginMethods.EmailOtp;
+                    var emailOtpSent = false;
+
+                    if (!authenticatorEnabled && emailOtpAvailable)
+                    {
+                        await _mfaService.SendLoginEmailOtpAsync(new SendLoginEmailOtpDTO
+                        {
+                            ChallengeToken = challengeToken
+                        });
+                        emailOtpSent = true;
+                    }
+
+                    await _auditService.WriteAsync(
+                        "AUTH-MFA-LOGIN-CHALLENGE",
+                        userId: user.Id,
+                        companyId: company.Id,
+                        email: user.Email,
+                        reason: preferredMethod);
+
+                    return new AuthResponseDTO
+                    {
+                        Token = string.Empty,
+                        Email = user.Email,
+                        Role = user.Role.Name,
+                        CompanyId = company.Id,
+                        CompanyName = company.Name,
+                        ExpiresAt = DateTime.MinValue,
+                        RequiresTwoFactor = true,
+                        TwoFactorChallengeToken = challengeToken,
+                        AvailableTwoFactorMethods = availableMethods,
+                        PreferredTwoFactorMethod = preferredMethod,
+                        EmailOtpSent = emailOtpSent,
+                        Message = BuildMfaChallengeMessage(preferredMethod, availableMethods)
+                    };
+                }
             }
 
             return await CreateAuthenticatedResponseAsync(user, company, "AUTH-LOGIN-SUCCESS", user.Role.Name);
@@ -609,7 +674,7 @@ namespace AccountingSystem.API.Services
                 user,
                 company,
                 "AUTH-MFA-LOGIN-SUCCESS",
-                verificationResult.UsedRecoveryCode ? "RecoveryCode" : "AuthenticatorCode");
+                verificationResult.Method);
         }
 
         public async Task SendPasswordResetAsync(ForgotPasswordDTO dto)
@@ -1450,6 +1515,21 @@ namespace AccountingSystem.API.Services
 
         private static bool IsSuperAdminRole(string roleName) =>
             string.Equals(roleName, "SuperAdmin", StringComparison.Ordinal);
+
+        private static string BuildMfaChallengeMessage(string preferredMethod, IReadOnlyCollection<string> availableMethods)
+        {
+            if (preferredMethod == MfaLoginMethods.EmailOtp)
+            {
+                return "Enter the 6-digit code sent to your confirmed email address.";
+            }
+
+            if (availableMethods.Contains(MfaLoginMethods.EmailOtp))
+            {
+                return "Enter your authenticator app code, use a recovery code, or request an email code.";
+            }
+
+            return "Enter the 6-digit code from Google Authenticator or a recovery code.";
+        }
 
         private static AuthTokenContext CreateTokenContext(User user, Company company) =>
             new(

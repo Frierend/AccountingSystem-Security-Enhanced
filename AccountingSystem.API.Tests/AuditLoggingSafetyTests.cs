@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using AccountingSystem.API.Controllers;
 using AccountingSystem.API.Middleware;
+using AccountingSystem.API.Models;
 using AccountingSystem.API.Services;
 using AccountingSystem.API.Services.Interfaces;
 using FluentAssertions;
@@ -87,6 +88,44 @@ public class AuditLoggingSafetyTests
         var auditLog = await dbContext.AuditLogs.IgnoreQueryFilters().SingleAsync();
         auditLog.Action.Should().Be("AUTH-LOGIN-FAILURE");
         auditLog.Changes.Should().Contain("\"category\":\"Security\"");
+    }
+
+    [Fact]
+    public async Task AuthSecurityAuditService_WhenTargetIsSuperAdmin_ShouldMirrorSecurityEventToSuperAdminAuditLogs()
+    {
+        var dbContext = TestHelpers.CreateContext();
+        var role = new Role { Id = 4, Name = "SuperAdmin" };
+        var company = new Company { Id = 1, Name = "SaaS Operations", IsActive = true, Status = "Active" };
+        var superAdmin = TestHelpers.CreateUser(role, company.Id, "superadmin@test.com", "LongPassword123!");
+        dbContext.Roles.Add(role);
+        dbContext.Companies.Add(company);
+        dbContext.Users.Add(superAdmin);
+        await dbContext.SaveChangesAsync();
+
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Path = "/api/auth/login";
+        httpContext.Connection.RemoteIpAddress = IPAddress.Loopback;
+        var accessor = new HttpContextAccessor { HttpContext = httpContext };
+
+        var service = new AuthSecurityAuditService(
+            dbContext,
+            accessor,
+            Mock.Of<ILogger<AuthSecurityAuditService>>());
+
+        await service.WriteAsync(
+            "AUTH-LOGIN-FAILURE",
+            userId: superAdmin.Id,
+            companyId: company.Id,
+            email: superAdmin.Email,
+            reason: "InvalidPassword",
+            failedAttempts: 2);
+
+        var superAdminLog = await dbContext.SuperAdminAuditLogs.IgnoreQueryFilters().SingleAsync();
+        superAdminLog.Action.Should().Be("SUPERADMIN-AUTH-LOGIN-FAILURE");
+        superAdminLog.TargetType.Should().Be("SuperAdminAccount");
+        superAdminLog.TargetName.Should().Be(superAdmin.Email);
+        superAdminLog.Details.Should().Contain("InvalidPassword");
+        superAdminLog.Details.Should().NotContain("LongPassword123!");
     }
 
     [Fact]

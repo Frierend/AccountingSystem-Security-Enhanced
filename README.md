@@ -57,15 +57,19 @@
   - maximum length: 128 characters.
 - Login protection defaults:
   - lockout after 5 failed attempts
-  - temporary lockout duration: 15 minutes
+  - temporary demo lockout duration: 5 minutes
+  - adaptive login reCAPTCHA after repeated failed attempts
   - endpoint-specific rate limiting on auth routes.
+- Optional MFA:
+  - Authenticator App MFA with recovery codes
+  - Email OTP MFA to a confirmed email address
 - Tenant isolation through middleware and EF Core query filters.
-- Audit logging through `AuditMiddleware` plus dedicated auth security audit events.
+- Audit logging through `AuditMiddleware` plus dedicated auth security events, including mirrored SuperAdmin-account auth events in governance logs.
 
 ## Security Policy Snapshot
 
 - **Secure configuration policy**: runtime secrets are expected from environment variables or `.env` in local development. Checked-in `appsettings.json` uses placeholders (`__SET_VIA_ENV__`) for sensitive values.
-- **Authentication policy**: login, forgot password, reset password, email confirmation, resend confirmation, and optional TOTP MFA are implemented.
+- **Authentication policy**: login, forgot password, reset password, email confirmation, resend confirmation, optional Authenticator App MFA, optional Email OTP MFA, and recovery codes are implemented.
 - **Authorization policy**: roles include `Admin`, `Accounting`, `Management`, and `SuperAdmin`; protected pages and API endpoints enforce role checks.
 - **Data handling policy**: passwords are not stored in plaintext; EF Core is used for database access; HTTPS redirection is enabled in API startup.
 - **Monitoring policy**: security-relevant events are logged through audit tables and auth-security audit events.
@@ -83,9 +87,9 @@
 
 ## Known Limitations and Recommended Improvements
 
-- **Known Limitation**: PayMongo webhook signature verification currently requires hardening (`VerifyWebhookSignature` is currently permissive).
-- **Known Limitation**: several auth endpoints return raw exception messages in `BadRequest` responses and should be standardized to safer error envelopes.
+- **Known Limitation**: Email OTP challenges are stored in memory for this demo build; pending codes are lost if the API restarts.
 - **Known Limitation**: JWT is stored in browser local storage; this increases token theft impact if XSS is introduced.
+- **Recommended Improvement**: continue standardizing auth error responses to safer response envelopes where legacy endpoints still use broad `BadRequest` handling.
 - **Recommended Improvement**: increase CI security enforcement from report-first mode to policy gates after vulnerability/secret baseline remediation.
 - **Recommended Improvement**: add refresh token and token revocation strategy for stronger session control.
 

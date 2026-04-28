@@ -100,6 +100,16 @@ namespace AccountingSystem.Client.Services
             return result;
         }
 
+        public async Task SendLoginEmailOtp(SendLoginEmailOtpDTO dto)
+        {
+            var response = await _api.PostAsync("api/auth/login/mfa/email/send", dto, requiresAuth: false);
+            if (!response.IsSuccessStatusCode)
+            {
+                var rawContent = await response.Content.ReadAsStringAsync();
+                throw new Exception(ApiErrorParser.Extract(rawContent, "Unable to send an email verification code. Please try again."));
+            }
+        }
+
         public async Task<AuthResponseDTO> RegisterCompany(CompanyRegisterDTO registerDto)
         {
             var response = await _api.PostAsync("api/auth/register-company", registerDto, requiresAuth: false);
@@ -276,6 +286,36 @@ namespace AccountingSystem.Client.Services
             {
                 var rawContent = await response.Content.ReadAsStringAsync();
                 throw new Exception(ApiErrorParser.Extract(rawContent, "Unable to disable MFA. Please try again."));
+            }
+        }
+
+        public async Task SendEmailOtpSetupCode()
+        {
+            var response = await _api.PostAsync("api/auth/mfa/email/setup", new { });
+            if (!response.IsSuccessStatusCode)
+            {
+                var rawContent = await response.Content.ReadAsStringAsync();
+                throw new Exception(ApiErrorParser.Extract(rawContent, "Unable to send an email verification code. Please try again."));
+            }
+        }
+
+        public async Task VerifyEmailOtpSetup(VerifyEmailOtpMfaDTO dto)
+        {
+            var response = await _api.PostAsync("api/auth/mfa/email/verify", dto);
+            if (!response.IsSuccessStatusCode)
+            {
+                var rawContent = await response.Content.ReadAsStringAsync();
+                throw new Exception(ApiErrorParser.Extract(rawContent, "Unable to verify the email code. Please try again."));
+            }
+        }
+
+        public async Task DisableEmailOtp(MfaReauthenticationDTO dto)
+        {
+            var response = await _api.PostAsync("api/auth/mfa/email/disable", dto);
+            if (!response.IsSuccessStatusCode)
+            {
+                var rawContent = await response.Content.ReadAsStringAsync();
+                throw new Exception(ApiErrorParser.Extract(rawContent, "Unable to disable Email OTP MFA. Please try again."));
             }
         }
     }

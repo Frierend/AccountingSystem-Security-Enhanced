@@ -135,6 +135,10 @@ Endpoints:
   - Request: `LoginMfaDTO`.
   - Response: `AuthResponseDTO`.
   - Status Codes: `200`, `401`, `400`.
+- **[POST] /api/auth/login/mfa/email/send**
+  - Description: Sends an Email OTP for an active MFA login challenge when Email OTP MFA is enabled.
+  - Request: `SendLoginEmailOtpDTO`.
+  - Status Codes: `200`, `400`, `401`, `429`.
 - **[POST] /api/auth/register-company**
   - Description: Creates tenant company + admin user and sends email confirmation workflow.
   - Request: `CompanyRegisterDTO` (includes recaptcha token).
@@ -193,7 +197,18 @@ Endpoints:
   - Request: `MfaReauthenticationDTO`.
   - Status Codes: `200`, `400`, `401`.
 - **[POST] /api/auth/mfa/disable**
-  - Description: Disables MFA for current user.
+  - Description: Disables Authenticator App MFA for current user.
+  - Request: `MfaReauthenticationDTO`.
+  - Status Codes: `200`, `400`, `401`.
+- **[POST] /api/auth/mfa/email/setup**
+  - Description: Sends a setup verification code to the current user's confirmed email address.
+  - Status Codes: `200`, `400`, `401`.
+- **[POST] /api/auth/mfa/email/verify**
+  - Description: Verifies setup code and enables Email OTP MFA.
+  - Request: `VerifyEmailOtpMfaDTO`.
+  - Status Codes: `200`, `400`, `401`.
+- **[POST] /api/auth/mfa/email/disable**
+  - Description: Disables Email OTP MFA after re-authentication.
   - Request: `MfaReauthenticationDTO`.
   - Status Codes: `200`, `400`, `401`.
 
@@ -297,7 +312,7 @@ Endpoints:
 - **[POST] /api/payments/paymongo-source** (`Admin,Accounting`)
   - Creates PayMongo payment source and returns checkout link/source id.
 - **[POST] /api/payments/webhook** (`AllowAnonymous`)
-  - Receives PayMongo webhook payload.
+  - Receives PayMongo webhook payload and validates the PayMongo HMAC signature/replay window before accepting it.
 
 ### Controller: SuperAdminController
 
@@ -397,7 +412,7 @@ User Flow: authorized user opens dashboard → data fetched from multiple servic
 
 ### Feature: User Profile (`/profile`)
 
-Purpose: Manage own profile, password, and MFA settings.  
+Purpose: Manage own profile, password, Authenticator App MFA, Email OTP MFA, and recovery codes.  
 Connected API Endpoints: `PUT /api/auth/profile`, `PUT /api/auth/password`, `/api/auth/mfa/*`.  
 Data Models Used: `UpdateProfileDTO`, `ChangePasswordDTO`, MFA DTOs.  
 User Flow: edit profile/password or manage authenticator/recovery codes → save → snackbar feedback.
@@ -572,7 +587,7 @@ Both API and Client include project references to `AccountingSystem.Shared`, cre
 - **Database:** Microsoft SQL Server accessed through EF Core 8
 - **Authentication:** JWT bearer tokens with role-based authorization
 - **Email Delivery:** SMTP via `SmtpClient` (Gmail App Password compatible when Gmail SMTP is used)
-- **Bot Protection:** Google reCAPTCHA v2 Checkbox in company registration flow
+- **Bot Protection:** Google reCAPTCHA v2 Checkbox in company registration flow and adaptive login reCAPTCHA after repeated failed attempts
 - **Payment Integration:** PayMongo source and redirect flow (test-mode usage for local/academic demonstration)
 - **Additional libraries:** MudBlazor, Blazored.LocalStorage, QuestPDF, Swashbuckle
 
@@ -593,7 +608,9 @@ Password policy is enforced through `AccountingSystem.Shared/Validation/Password
 Default lockout settings in configuration:
 
 - `AuthSecurity:Lockout:MaxFailedAccessAttempts = 5`
-- `AuthSecurity:Lockout:LockoutMinutes = 15`
+- `AuthSecurity:Lockout:LockoutMinutes = 5`
+
+The login UI intentionally does not show exact attempts left or a lockout countdown. This limits attacker feedback while still showing generic user-friendly errors for CAPTCHA and temporary lockout states.
 
 Rate limiting is configured per auth endpoint (login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, MFA management).
 
@@ -606,8 +623,11 @@ Implemented features:
 - Reset password (`POST /api/auth/reset-password`)
 - Email confirmation (`POST /api/auth/confirm-email`)
 - Resend confirmation (`POST /api/auth/resend-confirmation`)
-- Optional MFA (TOTP + recovery code) endpoints under `/api/auth/mfa*`
+- Optional MFA:
+  - Authenticator App MFA with recovery codes
+  - Email OTP MFA to a confirmed email address
 - Registration protected by Google reCAPTCHA token verification
+- Login protected by adaptive reCAPTCHA after repeated failed attempts
 
 Password handling status:
 
@@ -634,6 +654,7 @@ Password handling status:
 - `AuditMiddleware` records successful state-changing non-auth requests
 - Auth and account-security events are captured by `AuthSecurityAuditService`
 - Super-admin actions are recorded in `SuperAdminAuditLogs`
+- SuperAdmin-account login failures, lockouts, CAPTCHA-required events, MFA challenges, and successful logins are mirrored into SuperAdmin governance logs.
 - Local development can use a logging email sender when SMTP is not configured
 
 ### 8.7 Incident Response Plan
@@ -680,17 +701,20 @@ Remaining improvements:
 - [x] Reset password flow
 - [x] Email confirmation and resend confirmation flows
 - [x] reCAPTCHA-protected registration
+- [x] Adaptive login reCAPTCHA
+- [x] TOTP Authenticator App MFA
+- [x] Email OTP MFA
 - [x] PayMongo source/redirect payment flow (test mode)
 - [x] Protected dashboard and role-gated pages
 - [x] Audit logs and auth-security audit events
 
 ### 8.11 Known Limitations and Recommended Improvements
 
-- **Known Limitation:** PayMongo webhook signature verification still needs cryptographic implementation hardening.
-- **Known Limitation:** Multiple auth endpoints return raw exception messages and should be normalized to safer response envelopes.
+- **Known Limitation:** Email OTP challenges are stored in memory for this demo build; pending codes are lost if the API restarts.
 - **Known Limitation:** Client-side JWT storage in local storage increases risk exposure if XSS is introduced.
 - **Recommended Improvement:** Move CI security tooling from evidence-first reporting to stricter enforcement gates after remediation baseline.
 - **Recommended Improvement:** Add refresh token and server-side revocation strategy.
+- **Recommended Improvement:** Use database or distributed-cache backed Email OTP challenge storage for production or multi-instance deployments.
 
 ---
 
@@ -765,7 +789,7 @@ dotnet build AccountingSystem.sln
 - Move all secrets to secure secret stores (Key Vault/env vars).
 - Restrict CORS origins to production domains.
 - Enable strict HTTPS and secure reverse-proxy settings.
-- Validate webhook signatures cryptographically.
+- Keep PayMongo webhook signature secrets aligned with deployed webhook configuration.
 - Consider CI/CD migration strategy and zero-downtime deployment plan.
 
 ---
@@ -786,8 +810,8 @@ dotnet build AccountingSystem.sln
 
 ### 10.3 Security improvements
 
-- Implement cryptographic verification for PayMongo webhook signatures.
-- Replace raw exception-message responses in auth endpoints with consistent sanitized error contracts.
+- Use database or distributed-cache backed Email OTP challenge storage for production or multi-instance deployments.
+- Continue normalizing auth error responses to consistent sanitized error contracts.
 - Evaluate migration away from browser local storage for token persistence or strengthen compensating controls.
 - Introduce CI-based security checks (SAST, dependency vulnerability scanning, and secrets scanning).
 - Design refresh-token and revocation controls for stronger session lifecycle management.

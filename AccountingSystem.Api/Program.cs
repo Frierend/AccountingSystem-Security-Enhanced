@@ -66,7 +66,7 @@ var identityBuilder = builder.Services.AddIdentityCore<ApplicationUser>(options 
     options.Password.RequiredUniqueChars = 1;
 
     options.Lockout.MaxFailedAccessAttempts = GetConfiguredPositiveInt("AuthSecurity:Lockout:MaxFailedAccessAttempts", 5);
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(GetConfiguredPositiveInt("AuthSecurity:Lockout:LockoutMinutes", 15));
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(GetConfiguredPositiveInt("AuthSecurity:Lockout:LockoutMinutes", 5));
     options.Lockout.AllowedForNewUsers = true;
 
     options.User.RequireUniqueEmail = true;
@@ -90,6 +90,7 @@ builder.Services.AddScoped<IAuthTokenFactory, JwtAuthTokenFactory>();
 builder.Services.AddScoped<IIdentityAccountService, IdentityAccountService>();
 builder.Services.AddScoped<ILegacyIdentityBridgeService, LegacyIdentityBridgeService>();
 builder.Services.AddScoped<IMfaService, MfaService>();
+builder.Services.AddSingleton<IEmailOtpChallengeStore, EmailOtpChallengeStore>();
 builder.Services.AddScoped<ILoginChallengeTokenService, LoginChallengeTokenService>();
 if (useLoggingAccountEmailSender)
 {
