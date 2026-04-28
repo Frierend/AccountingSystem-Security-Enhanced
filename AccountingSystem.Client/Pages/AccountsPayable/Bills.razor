@@ -1,0 +1,214 @@
+﻿@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Components
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using System.Globalization
+@attribute [Authorize(Roles = "Admin,Accounting")]
+@inject PayableService PayableService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+@inject ILogger<Bills> Logger
+
+<PageTitle>Create Bill</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6 mb-10">
+    <div class="d-flex justify-space-between align-center mb-6">
+        <div>
+            @if (_initialLoading)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="180px" Height="32px" Class="mb-1" />
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="380px" Height="16px" />
+            }
+            else
+            {
+                <h2 style="font-size: 1.5rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-main); margin: 0;">
+                    New Vendor Bill
+                </h2>
+                <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0.25rem 0 0 0;">
+                    Record vendor invoices and track accounts payable obligations.
+                </p>
+            }
+        </div>
+    </div>
+
+    @if (_initialLoading)
+    {
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+            <MudCardContent>
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" sm="6">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="140px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="4">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="4">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="90px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="4">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="120px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="100px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="86px" Style="border-radius: 6px;" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+
+            <MudCardActions Class="d-flex justify-end pa-4 border-t">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="130px" Height="40px" Style="border-radius: 6px;" />
+            </MudCardActions>
+        </MudCard>
+    }
+    else
+    {
+        <EditForm Model="@bill" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+
+            <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+                <MudCardContent>
+                    <MudGrid Spacing="3">
+
+                        <MudItem xs="12" sm="6">
+                            <VendorSelect @bind-SelectedVendorId="bill.VendorId" />
+                            <ValidationMessage For="@(() => bill.VendorId)" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudTextField Label="Vendor Invoice Number"
+                                          @bind-Value="bill.VendorReferenceNumber"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Class="shadcn-input" />
+                            <ValidationMessage For="@(() => bill.VendorReferenceNumber)" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudTextField Label="System Reference Number" Value="@("[Auto-Generated]")" Disabled="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="shadcn-input" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="4">
+                            <MudDatePicker Label="Due Date"
+                                           @bind-Date="billDate"
+                                           Variant="Variant.Outlined"
+                                           Margin="Margin.Dense"
+                                           Class="shadcn-input" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="4">
+                            <MudNumericField Label="Amount (₱)"
+                                             @bind-Value="bill.Amount"
+                                             Format="N2"
+                                             Adornment="Adornment.Start"
+                                             AdornmentText="₱"
+                                             HideSpinButtons="true"
+                                             Variant="Variant.Outlined"
+                                             Margin="Margin.Dense"
+                                             Class="shadcn-input" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="4">
+                            <AccountSelect @bind-SelectedAccountId="bill.ExpenseAccountId"
+                                           TypeFilter="Expense" />
+                            <ValidationMessage For="@(() => bill.ExpenseAccountId)" />
+                        </MudItem>
+
+                        <MudItem xs="12">
+                            <MudTextField Label="Description"
+                                          @bind-Value="bill.Description"
+                                          Lines="3"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Class="shadcn-input" />
+                        </MudItem>
+
+                    </MudGrid>
+                </MudCardContent>
+
+                <MudCardActions Class="d-flex justify-end pa-4">
+                    <MudButton ButtonType="ButtonType.Submit"
+                               Variant="Variant.Filled"
+                               Class="save-btn"
+                               Size="Size.Medium"
+                               Disabled="@isSubmitting"
+                               StartIcon="@Icons.Material.Outlined.Save">
+                        @(isSubmitting ? "Saving..." : "Save Bill")
+                    </MudButton>
+                </MudCardActions>
+            </MudCard>
+        </EditForm>
+    }
+</MudContainer>
+
+@code {
+    // Optional: culture if you later display totals or previews
+    private readonly CultureInfo phCulture = new("en-PH");
+
+    private CreateBillDTO bill = new()
+    {
+        DueDate = DateTime.Today.AddDays(30)
+    };
+
+    private DateTime? billDate
+    {
+        get => bill.DueDate;
+        set => bill.DueDate = value ?? DateTime.Today;
+    }
+
+    private bool isSubmitting = false;
+    private bool _initialLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Simulate initial load time for vendors/accounts
+        await Task.Delay(100);
+        _initialLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (bill.VendorId == 0)
+        {
+            Snackbar.Add("Please select a vendor.", Severity.Warning);
+            return;
+        }
+
+        if (bill.ExpenseAccountId == 0)
+        {
+            Snackbar.Add("Please select an expense account.", Severity.Warning);
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            await PayableService.CreateBillAsync(bill);
+            Snackbar.Add("Bill created successfully.", Severity.Success);
+            NavManager.NavigateTo("/ap", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to create bill.");
+            Snackbar.Add("Unable to create bill. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

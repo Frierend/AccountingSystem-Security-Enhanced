@@ -1,0 +1,197 @@
+﻿@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Components
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@attribute [Authorize(Roles = "Admin,Accounting")]
+@inject ReceivableService ReceivableService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+@inject ILogger<Invoices> Logger
+
+<PageTitle>Create Invoice</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6 mb-10">
+    <div class="d-flex justify-space-between align-center mb-6">
+        <div>
+            @if (_initialLoading)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="220px" Height="32px" Class="mb-1" />
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="400px" Height="16px" />
+            }
+            else
+            {
+                <h2 style="font-size: 1.5rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-main); margin: 0;">
+                    New Customer Invoice
+                </h2>
+                <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0.25rem 0 0 0;">
+                    Create customer invoices and track accounts receivable transactions.
+                </p>
+            }
+        </div>
+    </div>
+
+    @if (_initialLoading)
+    {
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+            <MudCardContent>
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" sm="6">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="90px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="130px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="120px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="100px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="86px" Style="border-radius: 6px;" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+
+            <MudCardActions Class="d-flex justify-end pa-4 border-t">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="140px" Height="40px" Style="border-radius: 6px;" />
+            </MudCardActions>
+        </MudCard>
+    }
+    else
+    {
+        <EditForm Model="@invoice" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+
+            <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+                <MudCardContent>
+                    <MudGrid Spacing="3">
+
+                        <MudItem xs="12" sm="6">
+                            <CustomerSelect @bind-SelectedCustomerId="invoice.CustomerId" />
+                            <ValidationMessage For="@(() => invoice.CustomerId)" />
+                        </MudItem>
+
+
+                        <MudItem xs="12" sm="6">
+                            <MudTextField Label="Reference Number" Value="@("[Auto-Generated]")" Disabled="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="shadcn-input" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudDatePicker Label="Due Date"
+                                           @bind-Date="invoiceDate"
+                                           Variant="Variant.Outlined"
+                                           Margin="Margin.Dense"
+                                           Class="shadcn-input" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudNumericField Label="Total Amount (₱)"
+                                             @bind-Value="invoice.Amount"
+                                             Format="N2"
+                                             Adornment="Adornment.Start"
+                                             AdornmentText="₱"
+                                             HideSpinButtons="true"
+                                             Variant="Variant.Outlined"
+                                             Margin="Margin.Dense"
+                                             Class="shadcn-input" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <AccountSelect @bind-SelectedAccountId="invoice.RevenueAccountId"
+                                           TypeFilter="Revenue" />
+                            <ValidationMessage For="@(() => invoice.RevenueAccountId)" />
+                        </MudItem>
+
+                        <MudItem xs="12">
+                            <MudTextField Label="Description"
+                                          @bind-Value="invoice.Description"
+                                          Lines="3"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Class="shadcn-input" />
+                        </MudItem>
+
+                    </MudGrid>
+                </MudCardContent>
+
+                <MudCardActions Class="d-flex justify-end pa-4">
+                    <MudButton ButtonType="ButtonType.Submit"
+                               Variant="Variant.Filled"
+                               Class="save-btn"
+                               Size="Size.Medium"
+                               Disabled="@isSubmitting"
+                               StartIcon="@Icons.Material.Outlined.Save">
+                        @(isSubmitting ? "Saving..." : "Save Invoice")
+                    </MudButton>
+                </MudCardActions>
+            </MudCard>
+        </EditForm>
+    }
+</MudContainer>
+
+@code {
+    private CreateInvoiceDTO invoice = new()
+    {
+        DueDate = DateTime.Today.AddDays(15)
+    };
+
+    private DateTime? invoiceDate
+    {
+        get => invoice.DueDate;
+        set => invoice.DueDate = value ?? DateTime.Today;
+    }
+
+    private bool isSubmitting = false;
+    private bool _initialLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Simulate initial load time for customers/accounts
+        await Task.Delay(100);
+        _initialLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (invoice.CustomerId == 0)
+        {
+            Snackbar.Add("Please select a customer.", Severity.Warning);
+            return;
+        }
+
+        if (invoice.RevenueAccountId == 0)
+        {
+            Snackbar.Add("Please select a revenue account.", Severity.Warning);
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            var created = await ReceivableService.CreateInvoiceAsync(invoice);
+            Snackbar.Add($"Invoice {created?.ReferenceNumber ?? ""} created successfully.", Severity.Success);
+            NavManager.NavigateTo("/ar", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to create invoice.");
+            Snackbar.Add("Unable to create invoice. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

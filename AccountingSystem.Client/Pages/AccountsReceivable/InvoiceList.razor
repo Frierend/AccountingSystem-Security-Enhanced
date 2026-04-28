@@ -1,0 +1,396 @@
+﻿@page "/ar/invoices"
+@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Dialogs
+@using AccountingSystem.Shared.Enums
+@using MudBlazor
+@using System.Globalization
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Accounting")]
+@inject ReceivableService ReceivableService
+@inject ReportService ReportService
+@inject LedgerService LedgerService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject ILogger<InvoiceList> Logger
+
+<PageTitle>Customer Invoices</PageTitle>
+
+<style>
+    /* Responsive Skeletons */
+    @@media (max-width: 599px) {
+        .desktop-skeleton { display: none !important; }
+    }
+    @@media (min-width: 600px) {
+        .mobile-skeleton { display: none !important; }
+    }
+</style>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-6 mb-10">
+    <div class="d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center mb-6 gap-3">
+        <div>
+            @if (_initialLoading)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="180px" Height="32px" Class="mb-1" />
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="100%" Style="max-width: 420px;" Height="16px" />
+            }
+            else
+            {
+                <h2 style="font-size: 1.5rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-main); margin: 0;">
+                    Customer Invoices
+                </h2>
+                <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0.25rem 0 0 0;">
+                    Manage customer invoices and track payment collections.
+                </p>
+            }
+        </div>
+    </div>
+
+    @if (_initialLoading)
+    {
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+            <MudCardContent Class="pa-0">
+                <div class="d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center pa-4 border-b gap-3">
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="160px" Height="24px" />
+                    <div class="d-flex flex-column flex-sm-row align-stretch align-sm-center gap-3 w-100" style="max-width: 480px;">
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="36px" Style="border-radius: 6px; max-width: 300px;" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="36px" Style="border-radius: 6px; max-width: 150px;" />
+                    </div>
+                </div>
+
+                <div class="d-flex justify-space-between mb-2 pa-4 border-b desktop-skeleton gap-2">
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="40px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="150px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="90px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="70px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="70px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="70px" Height="20px" />
+                </div>
+
+                @for (int i = 0; i < 6; i++)
+                {
+                    <div class="d-flex justify-space-between align-center py-3 px-4 desktop-skeleton gap-4" style="border-bottom: 1px solid var(--border-color);">
+                        <div style="flex: 0.5;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="30px" Height="16px" /></div>
+                        <div style="flex: 2;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="140px" Height="16px" /></div>
+                        <div style="flex: 1;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="90px" Height="16px" /></div>
+                        <div style="flex: 1; text-align: right;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="16px" Style="margin-left: auto;" /></div>
+                        <div style="flex: 1; text-align: right;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="16px" Style="margin-left: auto;" /></div>
+                        <div style="flex: 0.8;"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="70px" Height="24px" Style="border-radius: 4px;" /></div>
+                        <div style="flex: 1;">
+                            <div class="d-flex justify-end gap-2">
+                                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="28px" Style="border-radius: 6px;" />
+                                <MudSkeleton SkeletonType="SkeletonType.Circle" Width="32px" Height="32px" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex flex-column py-3 px-4 mobile-skeleton gap-2" style="border-bottom: 1px solid var(--border-color);">
+                        <div class="d-flex justify-space-between align-center">
+                            <MudSkeleton SkeletonType="SkeletonType.Text" Width="40px" Height="16px" />
+                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="70px" Height="24px" Style="border-radius: 4px;" />
+                        </div>
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="70%" Height="16px" />
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" Height="14px" />
+                        <div class="d-flex justify-space-between align-center mt-2">
+                            <MudSkeleton SkeletonType="SkeletonType.Text" Width="100px" Height="18px" />
+                            <div class="d-flex gap-2">
+                                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="28px" Style="border-radius: 6px;" />
+                                <MudSkeleton SkeletonType="SkeletonType.Circle" Width="32px" Height="32px" />
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="d-flex justify-end pa-4">
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Style="max-width: 250px;" Height="32px" Class="rounded-md" />
+                </div>
+            </MudCardContent>
+        </MudCard>
+    }
+    else
+    {
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card mb-6">
+            <MudCardContent Class="pa-4">
+                <div class="d-flex align-center justify-space-between mb-4">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Outlined.FilterList" Size="Size.Small" Class="mr-2 text-muted" />
+                        <span style="font-size: 0.875rem; font-weight: 600; color: var(--text-main);">Filters</span>
+                    </div>
+                    @if (HasActiveFilters())
+                    {
+                        <div class="d-flex align-center gap-2">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); background: var(--bg-muted); padding: 2px 8px; border-radius: 4px;">
+                                @GetActiveFilterCount() active
+                            </span>
+                            <MudButton Variant="Variant.Text"
+                                       Size="Size.Small"
+                                       OnClick="ClearFilters"
+                                       StartIcon="@Icons.Material.Outlined.Clear"
+                                       Disabled="_loading"
+                                       Style="color: var(--text-muted); text-transform: none; font-size: 0.75rem;">
+                                Clear All
+                            </MudButton>
+                        </div>
+                    }
+                </div>
+
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" md="3">
+                        <MudSelect T="int"
+                                   Value="selectedFiscalYear"
+                                   ValueChanged="OnFiscalYearChanged"
+                                   Label="Fiscal Year"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Class="shadcn-input"
+                                   AnchorOrigin="Origin.BottomCenter"
+                                   Disabled="_loading">
+                            <MudSelectItem T="int" Value="0">All Years</MudSelectItem>
+                            @foreach (var year in fiscalYears)
+                            {
+                                <MudSelectItem T="int" Value="@year.FiscalYear">FY @year.FiscalYear</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudSelect T="string"
+                                   Value="selectedStatus"
+                                   ValueChanged="OnStatusChanged"
+                                   Label="Status"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Class="shadcn-input"
+                                   AnchorOrigin="Origin.BottomCenter"
+                                   Disabled="_loading">
+                            <MudSelectItem T="string" Value="@AllStatusValue">All Statuses</MudSelectItem>
+                            <MudSelectItem T="string" Value="@nameof(DocumentStatus.Unpaid)">Unpaid</MudSelectItem>
+                            <MudSelectItem T="string" Value="@nameof(DocumentStatus.PartiallyPaid)">Partially Paid</MudSelectItem>
+                            <MudSelectItem T="string" Value="@nameof(DocumentStatus.Paid)">Paid</MudSelectItem>
+                            <MudSelectItem T="string" Value="@nameof(DocumentStatus.Void)">Void</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="searchString"
+                                      Label="Search"
+                                      Placeholder="Search by customer or invoice ID..."
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Outlined.Search"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Class="shadcn-input"
+                                      Clearable="true"
+                                      Disabled="_loading" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+            <MudTable Items="@invoices" Dense="true" Hover="true" Elevation="0" Filter="new Func<InvoiceDTO, bool>(FilterFunc)" Loading="@_loading" Class="shadcn-table" Breakpoint="Breakpoint.Sm">
+                <ToolBarContent>
+                    <div style="font-size: 1.125rem; font-weight: 600; color: var(--text-main);">Invoices List</div>
+                    <MudSpacer />
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>ID</MudTh>
+                    <MudTh>Customer</MudTh>
+                    <MudTh>Due Date</MudTh>
+                    <MudTh Style="text-align:right">Total</MudTh>
+                    <MudTh Style="text-align:right">Balance</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Action</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="ID" Style="color: var(--text-muted);">@context.ReferenceNumber</MudTd>
+                    <MudTd DataLabel="Customer" Style="font-weight: 500; color: var(--text-main);">@context.CustomerName</MudTd>
+                    <MudTd DataLabel="Due Date" Style="color: var(--text-muted);">@context.DueDate.ToShortDateString()</MudTd>
+                    <MudTd DataLabel="Total" Style="text-align:right; font-variant-numeric: tabular-nums;">
+                        @context.TotalAmount.ToString("C2", _phCulture)
+                    </MudTd>
+                    <MudTd DataLabel="Balance" Style="text-align:right; font-weight:600; font-variant-numeric: tabular-nums; color: var(--text-main);">
+                        @context.Balance.ToString("C2", _phCulture)
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <span class="shadcn-badge @GetStatusBadgeClass(context.Status)">@GetStatusLabel(context.Status)</span>
+                    </MudTd>
+                    <MudTd DataLabel="Action">
+                        <div class="d-flex align-center gap-2">
+                            @if (context.Balance > 0)
+                            {
+                                <MudButton Size="Size.Small" 
+                                           Variant="Variant.Outlined" 
+                                           Class="shadcn-btn-outline" 
+                                           OnClick="@(() => OpenReceiveDialog(context))">
+                                    Receive
+                                </MudButton>
+                            }
+                            <MudTooltip Text="Download PDF">
+                                <MudIconButton Icon="@Icons.Material.Outlined.PictureAsPdf" 
+                                               Class="shadcn-icon-btn text-muted" 
+                                               Size="Size.Small" 
+                                               OnClick="@(() => DownloadPdf(context.Id))" />
+                            </MudTooltip>
+                        </div>
+                    </MudTd>
+                </RowTemplate>
+                <PagerContent><MudTablePager /></PagerContent>
+                <NoRecordsContent>
+                    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                        <MudIcon Icon="@Icons.Material.Outlined.ReceiptLong" Size="Size.Medium" Class="mb-2" />
+                        <div style="font-size: 0.875rem;">No invoices found matching your criteria.</div>
+                    </div>
+                </NoRecordsContent>
+            </MudTable>
+        </MudCard>
+    }
+</MudContainer>
+
+@code {
+    private List<InvoiceDTO> invoices = new List<InvoiceDTO>();
+    private List<FiscalYearSummaryDTO> fiscalYears = new List<FiscalYearSummaryDTO>();
+    private const string AllStatusValue = "__ALL__";
+    private string searchString = "";
+    private int selectedFiscalYear;
+    private int currentFiscalYear;
+    private string selectedStatus = AllStatusValue;
+    private bool _loading = true;
+    private bool _initialLoading = true;
+    private readonly CultureInfo _phCulture = CultureInfo.GetCultureInfo("en-PH");
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFiscalYears();
+        await LoadData();
+        _initialLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadFiscalYears()
+    {
+        try
+        {
+            fiscalYears = (await LedgerService.GetFiscalYearSummariesAsync() ?? new List<FiscalYearSummaryDTO>())
+                .OrderByDescending(f => f.FiscalYear)
+                .ToList();
+
+            var today = DateTime.Today;
+            currentFiscalYear = fiscalYears
+                .FirstOrDefault(f => f.PeriodStart.Date <= today && today <= f.PeriodEnd.Date)?.FiscalYear
+                ?? fiscalYears.FirstOrDefault()?.FiscalYear
+                ?? 0;
+
+            if (selectedFiscalYear == 0 && currentFiscalYear > 0)
+            {
+                selectedFiscalYear = currentFiscalYear;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load fiscal years for invoice list.");
+            Snackbar.Add("Failed to load fiscal years. Please try again.", Severity.Error);
+            fiscalYears = new List<FiscalYearSummaryDTO>();
+        }
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            int? fiscalYear = selectedFiscalYear > 0 ? selectedFiscalYear : null;
+            invoices = await ReceivableService.GetInvoicesAsync(fiscalYear, ParseStatusFilter(selectedStatus)) ?? new List<InvoiceDTO>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load invoices.");
+            Snackbar.Add("Failed to load invoices. Please try again.", Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task OnFiscalYearChanged(int fiscalYear)
+    {
+        selectedFiscalYear = fiscalYear;
+        await LoadData();
+    }
+
+    private async Task OnStatusChanged(string status)
+    {
+        selectedStatus = status;
+        await LoadData();
+    }
+
+    private bool HasActiveFilters()
+        => selectedFiscalYear != currentFiscalYear || selectedStatus != AllStatusValue || !string.IsNullOrWhiteSpace(searchString);
+
+    private int GetActiveFilterCount()
+    {
+        int count = 0;
+        if (selectedFiscalYear != currentFiscalYear) count++;
+        if (selectedStatus != AllStatusValue) count++;
+        if (!string.IsNullOrWhiteSpace(searchString)) count++;
+        return count;
+    }
+
+    private async Task ClearFilters()
+    {
+        selectedFiscalYear = currentFiscalYear;
+        selectedStatus = AllStatusValue;
+        searchString = string.Empty;
+        await LoadData();
+    }
+
+    private async Task OpenReceiveDialog(InvoiceDTO invoice)
+    {
+        var parameters = new DialogParameters { ["Invoice"] = invoice };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ReceivePaymentDialog>("Receive Payment", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled) await LoadData();
+    }
+
+    private async Task DownloadPdf(int id)
+    {
+        try
+        {
+            Snackbar.Add("Generating PDF...", Severity.Info);
+            await ReportService.DownloadInvoicePdf(id);
+            Snackbar.Add("Download started.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to download invoice PDF for invoice id {InvoiceId}.", id);
+            Snackbar.Add("Download failed. Please try again.", Severity.Error);
+        }
+    }
+
+    private static DocumentStatus? ParseStatusFilter(string statusValue)
+        => statusValue == AllStatusValue
+            ? null
+            : Enum.TryParse<DocumentStatus>(statusValue, out var status)
+            ? status
+            : null;
+
+    private static string GetStatusBadgeClass(DocumentStatus status)
+        => status switch
+        {
+            DocumentStatus.Paid => "badge-green",
+            DocumentStatus.PartiallyPaid => "badge-orange",
+            DocumentStatus.Void => "badge-slate",
+            _ => "badge-red" // Unpaid
+        };
+
+    private static string GetStatusLabel(DocumentStatus status)
+        => status switch
+        {
+            DocumentStatus.PartiallyPaid => "Partial",
+            _ => status.ToString()
+        };
+
+    private bool FilterFunc(InvoiceDTO element) =>
+        string.IsNullOrWhiteSpace(searchString) ||
+        element.CustomerName.Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
+        element.Id.ToString().Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
+        element.ReferenceNumber.Contains(searchString, StringComparison.OrdinalIgnoreCase);
+}

@@ -1,0 +1,693 @@
+﻿@page "/"
+@layout LoginLayout
+@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using MudBlazor
+
+@inject AuthService AuthService
+@inject PendingMfaLoginStateService PendingMfaLoginState
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject ILogger<Login> Logger
+@inject IJSRuntime JS
+
+<PageTitle>AccSys - Sign In</PageTitle>
+
+<div class="split-login-container">
+
+    <div class="branding-panel">
+        <div class="branding-inner">
+            <div class="deco-circle deco-circle--lg"></div>
+            <div class="deco-circle deco-circle--sm"></div>
+            <div class="deco-circle deco-circle--xs"></div>
+
+            <div class="branding-illustration">
+                <div class="img-skeleton @(illustrationLoaded ? "img-skeleton--hidden" : "")"></div>
+                <img src="graphics3.png"
+                     alt="AccSys Accounting Illustration"
+                     class="branding-img @(illustrationLoaded ? "branding-img--visible" : "")"
+                     @onload="OnIllustrationLoaded" />
+            </div>
+
+            <div class="branding-text">
+                <h1 class="branding-title">AccSys Solutions</h1>
+                <p class="branding-subtitle">
+                    Sign in to manage your finances with clarity, control, and confidence.
+                </p>
+            </div>
+
+            <div class="branding-badges">
+                <div class="badge-item">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="badge-icon"><path fill-rule="evenodd" d="M12.516 2.17a.75.75 0 0 0-1.032 0 11.209 11.209 0 0 1-7.877 3.08.75.75 0 0 0-.722.515A12.74 12.74 0 0 0 2.25 9.75c0 5.942 4.064 10.933 9.563 12.348a.749.749 0 0 0 .374 0c5.499-1.415 9.563-6.406 9.563-12.348 0-1.39-.223-2.73-.635-3.985a.75.75 0 0 0-.722-.516l-.143.001c-2.996 0-5.717-1.17-7.734-3.08Z" clip-rule="evenodd" /></svg>
+                    <span>Secure</span>
+                </div>
+                <div class="badge-item">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="badge-icon"><path d="M18.375 2.25c-1.035 0-1.875.84-1.875 1.875v15.75c0 1.035.84 1.875 1.875 1.875h.75c1.035 0 1.875-.84 1.875-1.875V4.125c0-1.036-.84-1.875-1.875-1.875h-.75ZM9.75 8.625c0-1.036.84-1.875 1.875-1.875h.75c1.036 0 1.875.84 1.875 1.875v11.25c0 1.035-.84 1.875-1.875 1.875h-.75a1.875 1.875 0 0 1-1.875-1.875V8.625ZM3 13.125c0-1.036.84-1.875 1.875-1.875h.75c1.036 0 1.875.84 1.875 1.875v6.75c0 1.035-.84 1.875-1.875 1.875h-.75A1.875 1.875 0 0 1 3 19.875v-6.75Z" /></svg>
+                    <span>Real-time</span>
+                </div>
+                <div class="badge-item">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="badge-icon"><path fill-rule="evenodd" d="M8.603 3.799A4.49 4.49 0 0 1 12 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 0 1 3.498 1.307 4.491 4.491 0 0 1 1.307 3.497A4.49 4.49 0 0 1 21.75 12a4.49 4.49 0 0 1-1.549 3.397 4.491 4.491 0 0 1-1.307 3.497 4.491 4.491 0 0 1-3.497 1.307A4.49 4.49 0 0 1 12 21.75a4.49 4.49 0 0 1-3.397-1.549 4.49 4.49 0 0 1-3.498-1.307 4.491 4.491 0 0 1-1.307-3.498A4.49 4.49 0 0 1 2.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 0 1 1.307-3.497 4.49 4.49 0 0 1 3.497-1.307Zm7.007 6.387a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clip-rule="evenodd" /></svg>
+                    <span>Reliable</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="form-panel">
+        <div class="form-inner">
+
+            <div class="form-header">
+                <div class="logo-wrap">
+                    <div class="logo-skeleton @(logoLoaded ? "logo-skeleton--hidden" : "")"></div>
+                    <img src="AccsysLogo.png"
+                         alt="AccSys Logo"
+                         class="form-logo @(logoLoaded ? "form-logo--visible" : "")"
+                         @onload="OnLogoLoaded" />
+                </div>
+                <h2 class="form-title">Welcome to AccSys</h2>
+                <p class="form-subtitle">Sign in to access your accounting dashboard</p>
+            </div>
+
+            <EditForm Model="@loginModel" OnValidSubmit="HandleLogin">
+                <DataAnnotationsValidator />
+
+                <div class="fields-group">
+                    <MudTextField Label="Email Address"
+                                  @bind-Value="loginModel.Email"
+                                  For="@(() => loginModel.Email)"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Class="shadcn-input-auth mb-5"
+                                  DisableUnderLine="true"
+                                  FullWidth="true" />
+
+                    <MudTextField Label="Password"
+                                  @bind-Value="loginModel.Password"
+                                  For="@(() => loginModel.Password)"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  InputType="@passwordInputType"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@passwordInputIcon"
+                                  OnAdornmentClick="TogglePasswordVisibility"
+                                  AdornmentAriaLabel="Toggle password visibility"
+                                  DisableUnderLine="true"
+                                  Class="shadcn-input-auth mb-3"
+                                  FullWidth="true" />
+
+                    <div class="d-flex align-center justify-space-between mb-6 mt-1">
+                        <MudCheckBox @bind-Value="rememberMe" Color="Color.Primary" Label="Remember me" Class="ml-n2" Style="font-size: 0.875rem; color: var(--text-main);" />
+                        <MudLink Href="/forgot-password" Class="shadcn-link" Style="font-size: 0.875rem;">
+                            Forgot password?
+                        </MudLink>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="auth-alert alert-error mb-5">
+                            <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Size="Size.Small" />
+                            <span>@errorMessage</span>
+                        </div>
+                    }
+
+                    @if (requiresRecaptcha)
+                    {
+                        <div class="recaptcha-wrap mb-5">
+                            <div id="@RecaptchaContainerId"></div>
+                        </div>
+                    }
+
+                    <MudButton ButtonType="ButtonType.Submit"
+                               Variant="Variant.Filled"
+                               Class="shadcn-btn-primary"
+                               FullWidth="true"
+                               Disabled="@isLoading"
+                               Size="Size.Large">
+                        @if (isLoading)
+                        {
+                            <div class="d-flex align-center gap-2">
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ms-n1" />
+                                <span>Signing In...</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <span>Sign In</span>
+                        }
+                    </MudButton>
+                </div>
+            </EditForm>
+
+            <div class="form-footer">
+                <MudDivider Class="mb-5" />
+                <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                    Don't have an account?
+                    <MudLink Href="register" Class="shadcn-link ml-1">Sign up</MudLink>
+                </p>
+                <p style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">
+                    Need help? Contact your system administrator
+                </p>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<style>
+    /* ── Animations ───────────────────────────────────────────────── */
+    @@keyframes slideInLeft {
+        from { opacity: 0; transform: translateX(-56px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+
+    @@keyframes slideInRight {
+        from { opacity: 0; transform: translateX(56px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+
+    @@keyframes fadeUp {
+        from { opacity: 0; transform: translateY(18px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @@keyframes shimmer {
+        0% { background-position: -600px 0; }
+        100% { background-position: 600px 0; }
+    }
+
+    /* ── Base ─────────────────────────────────────────────────────── */
+    .split-login-container {
+        display: flex;
+        min-height: 100vh;
+        width: 100%;
+        background-color: var(--bg-background);
+    }
+
+    /* ── Left branding panel ──────────────────────────────────────── */
+    .branding-panel {
+        display: none;
+        width: 50%;
+        background-color: var(--theme-primary); /* Adopts the dark slate global primary */
+        position: relative;
+        overflow: hidden;
+        animation: slideInLeft 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    @@media (min-width: 768px) {
+        .branding-panel {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    }
+
+    .branding-inner {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 2rem 2.5rem;
+        max-width: 480px;
+        width: 100%;
+    }
+
+    .deco-circle {
+        position: absolute;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.03);
+        pointer-events: none;
+    }
+
+    .deco-circle--lg { width: 380px; height: 380px; top: -100px; right: -120px; }
+    .deco-circle--sm { width: 220px; height: 220px; bottom: 40px; left: -80px; background: rgba(255,255,255,0.02); }
+    .deco-circle--xs { width: 110px; height: 110px; top: 50%; left: 15%; background: rgba(255,255,255,0.015); }
+
+    /* Illustration */
+    .branding-illustration {
+        width: 100%;
+        max-width: 300px;
+        margin-bottom: 2rem;
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+        transition: transform 0.5s ease;
+        position: relative;
+        min-height: 200px;
+    }
+
+    .branding-illustration:hover {
+        transform: scale(1.02) translateY(-4px);
+    }
+
+    .img-skeleton {
+        position: absolute;
+        inset: 0;
+        border-radius: var(--radius-lg);
+        background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
+        background-size: 600px 100%;
+        animation: shimmer 1.6s infinite linear;
+        transition: opacity 0.35s ease;
+        z-index: 1;
+    }
+
+    .img-skeleton--hidden { opacity: 0; pointer-events: none; }
+
+    .branding-img {
+        width: 100%;
+        display: block;
+        object-fit: cover;
+        opacity: 0;
+        transition: opacity 0.45s ease;
+        position: relative;
+        z-index: 2;
+    }
+
+    .branding-img--visible { opacity: 1; }
+
+    .branding-title {
+        font-size: 2.25rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin: 0 0 0.75rem 0;
+        letter-spacing: -0.025em;
+    }
+
+    .branding-subtitle {
+        font-size: 1rem;
+        color: rgba(255,255,255,0.7);
+        line-height: 1.6;
+        margin: 0 0 2rem 0;
+    }
+
+    .branding-badges {
+        display: flex;
+        gap: 2rem;
+    }
+
+    .badge-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        color: rgba(255,255,255,0.8);
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .badge-icon {
+        width: 24px;
+        height: 24px;
+        color: rgba(255,255,255,0.9);
+    }
+
+    /* ── Right form panel ─────────────────────────────────────────── */
+    .form-panel {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--bg-surface);
+        padding: 2rem 1.25rem;
+        animation: slideInRight 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    @@media (min-width: 768px) {
+        .form-panel {
+            width: 50%;
+            padding: 2rem;
+        }
+    }
+
+    @@media (min-width: 1024px) {
+        .form-panel {
+            padding: 2rem 3rem;
+        }
+    }
+
+    .form-inner {
+        width: 100%;
+        max-width: 400px;
+    }
+
+    /* Header */
+    .form-header {
+        text-align: center;
+        margin-bottom: 2rem;
+        padding-bottom: 1.5rem;
+        animation: fadeUp 0.5s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .logo-wrap {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 1.25rem;
+        position: relative;
+        height: 54px;
+    }
+
+    .logo-skeleton {
+        position: absolute;
+        width: 120px;
+        height: 54px;
+        border-radius: var(--radius-md);
+        background: linear-gradient(90deg, var(--bg-muted) 25%, var(--border-color) 50%, var(--bg-muted) 75%);
+        background-size: 600px 100%;
+        animation: shimmer 1.4s infinite linear;
+        transition: opacity 0.35s ease;
+        z-index: 1;
+    }
+
+    .logo-skeleton--hidden { opacity: 0; pointer-events: none; }
+
+    .form-logo {
+        height: 54px;
+        width: auto;
+        transition: transform 0.3s ease, opacity 0.45s ease;
+        position: relative;
+        z-index: 2;
+        opacity: 0;
+    }
+
+    .form-logo--visible { opacity: 1; }
+    .form-logo:hover { transform: scale(1.05); }
+
+    .form-title {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin: 0 0 0.5rem 0;
+        letter-spacing: -0.025em;
+        color: var(--text-main);
+    }
+
+    .form-subtitle {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        margin: 0;
+    }
+
+    /* Fields */
+    .fields-group {
+        margin: 1rem 0;
+        animation: fadeUp 0.5s 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    /* Shadcn Input Standardization */
+    .shadcn-input-auth {
+        background-color: var(--bg-surface);
+    }
+    
+    .shadcn-input-auth .mud-input-outlined-border {
+        border-color: var(--border-color) !important;
+        border-radius: var(--radius-md) !important;
+    }
+
+    .shadcn-input-auth.mud-input-outlined:focus-within .mud-input-outlined-border {
+        border-color: var(--text-main) !important;
+        border-width: 1px !important;
+        box-shadow: 0 0 0 2px var(--bg-background), 0 0 0 4px var(--text-main) !important;
+    }
+
+    .shadcn-link {
+        color: var(--text-main) !important;
+        font-weight: 600 !important;
+        text-decoration: none !important;
+        transition: color 0.2s ease;
+    }
+
+    .shadcn-link:hover {
+        color: var(--text-muted) !important;
+        text-decoration: underline !important;
+    }
+
+    /* Error Alert */
+    .auth-alert {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1.4;
+        animation: fadeUp 0.3s ease;
+    }
+
+    .alert-error {
+        background-color: rgba(220, 38, 38, 0.1);
+        color: #dc2626;
+        border: 1px solid rgba(220, 38, 38, 0.2);
+    }
+
+    .recaptcha-wrap {
+        display: flex;
+        justify-content: center;
+        min-height: 78px;
+    }
+
+    /* Button */
+    .shadcn-btn-primary {
+        border-radius: var(--radius-md) !important;
+        text-transform: none !important;
+        font-weight: 500 !important;
+        background-color: var(--theme-primary) !important;
+        color: var(--bg-surface) !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+        transition: opacity 0.2s ease, transform 0.1s ease !important;
+    }
+
+    .shadcn-btn-primary:hover:not(:disabled) {
+        opacity: 0.9;
+        transform: translateY(-1px);
+    }
+
+    .shadcn-btn-primary:disabled {
+        opacity: 0.65 !important;
+    }
+
+    /* Footer */
+    .form-footer {
+        text-align: center;
+        padding-top: 1rem;
+        animation: fadeUp 0.5s 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    /* ── Mobile ──────────────────────────────────────────────────── */
+    @@media (max-width: 767px) {
+        .split-login-container {
+            height: auto;
+            min-height: 100vh;
+            overflow-y: auto;
+            background-color: var(--bg-muted);
+        }
+
+        .form-panel {
+            background: transparent;
+            padding: 1.5rem;
+        }
+
+        .form-inner {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 2rem 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+        }
+        
+        .form-header {
+            border-bottom: none;
+            margin-bottom: 1rem;
+        }
+    }
+</style>
+
+@code {
+    private const string RecaptchaSiteKey = "6LeREs0sAAAAALW-ePzb9R273YULYfKjGcg2SWr8";
+    private const string RecaptchaContainerId = "login_recaptcha_container";
+
+    private LoginDTO loginModel = new LoginDTO();
+    private bool isLoading = false;
+    private bool illustrationLoaded = false;
+    private bool logoLoaded = false;
+    private string errorMessage = "";
+    private bool rememberMe = false;
+    private bool requiresRecaptcha = false;
+    private bool captchaRendered = false;
+    private bool captchaRenderAttempted = false;
+
+    // Password visibility state
+    private bool isShowPassword = false;
+    private InputType passwordInputType = InputType.Password;
+    private string passwordInputIcon = Icons.Material.Outlined.VisibilityOff;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity != null && authState.User.Identity.IsAuthenticated)
+        {
+            var role = authState.User.FindFirst("role")?.Value;
+            NavManager.NavigateTo(role == "SuperAdmin" ? "/superadmin/dashboard" : "/dashboard");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!requiresRecaptcha || captchaRendered || captchaRenderAttempted)
+        {
+            return;
+        }
+
+        captchaRenderAttempted = true;
+        await Task.Delay(300);
+
+        var rendered = false;
+        try
+        {
+            rendered = await JS.InvokeAsync<bool>("renderRecaptcha", RecaptchaContainerId, RecaptchaSiteKey);
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Unable to render login CAPTCHA widget.");
+        }
+
+        captchaRendered = rendered;
+        if (!rendered)
+        {
+            errorMessage = "Security verification failed to load. Please refresh and try again.";
+            StateHasChanged();
+        }
+    }
+
+    private void OnLogoLoaded()
+    {
+        logoLoaded = true;
+        StateHasChanged();
+    }
+
+    private void OnIllustrationLoaded()
+    {
+        illustrationLoaded = true;
+        StateHasChanged();
+    }
+
+    private void TogglePasswordVisibility()
+    {
+        isShowPassword = !isShowPassword;
+        passwordInputType = isShowPassword ? InputType.Text : InputType.Password;
+        passwordInputIcon = isShowPassword ? Icons.Material.Outlined.Visibility : Icons.Material.Outlined.VisibilityOff;
+    }
+
+    private async Task HandleLogin()
+    {
+        isLoading = true;
+        errorMessage = "";
+        try
+        {
+            if (!await CaptureRecaptchaTokenIfNeededAsync())
+            {
+                return;
+            }
+
+            var result = await AuthService.Login(loginModel);
+            ClearRecaptchaState();
+
+            if (result.RequiresTwoFactor)
+            {
+                PendingMfaLoginState.Set(result.TwoFactorChallengeToken, result.Email);
+                Snackbar.Add(
+                    string.IsNullOrWhiteSpace(result.Message)
+                        ? "Enter your Google Authenticator code to continue."
+                        : result.Message,
+                    Severity.Info);
+                NavManager.NavigateTo("/mfa-login");
+                return;
+            }
+
+            Snackbar.Add("Welcome back! Login successful.", Severity.Success);
+
+            await Task.Delay(500);
+            NavManager.NavigateTo(result.Role == "SuperAdmin" ? "/superadmin/dashboard" : "/dashboard");
+        }
+        catch (LoginRequiresRecaptchaException ex)
+        {
+            requiresRecaptcha = true;
+            errorMessage = string.IsNullOrWhiteSpace(ex.Message)
+                ? "Additional verification is required before signing in. Please complete the CAPTCHA and try again."
+                : ex.Message;
+            await ResetLoginCaptchaAsync(forceRender: true);
+            Logger.LogWarning(ex, "Login requires CAPTCHA verification.");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = string.IsNullOrWhiteSpace(ex.Message)
+                ? "Invalid email or password. Please try again."
+                : ex.Message;
+            await ResetLoginCaptchaAsync(forceRender: false);
+            Logger.LogError(ex, "Login failed.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task<bool> CaptureRecaptchaTokenIfNeededAsync()
+    {
+        if (!requiresRecaptcha)
+        {
+            loginModel.RecaptchaToken = string.Empty;
+            return true;
+        }
+
+        var token = await JS.InvokeAsync<string>("getCaptchaResponse");
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            loginModel.RecaptchaToken = string.Empty;
+            errorMessage = "Please complete the CAPTCHA before signing in.";
+            return false;
+        }
+
+        loginModel.RecaptchaToken = token;
+        return true;
+    }
+
+    private async Task ResetLoginCaptchaAsync(bool forceRender)
+    {
+        loginModel.RecaptchaToken = string.Empty;
+
+        if (captchaRendered)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("resetCaptcha");
+            }
+            catch (JSException ex)
+            {
+                Logger.LogWarning(ex, "Unable to reset login CAPTCHA widget.");
+            }
+        }
+
+        if (forceRender)
+        {
+            captchaRendered = false;
+            captchaRenderAttempted = false;
+        }
+    }
+
+    private void ClearRecaptchaState()
+    {
+        loginModel.RecaptchaToken = string.Empty;
+        requiresRecaptcha = false;
+        captchaRendered = false;
+        captchaRenderAttempted = false;
+    }
+}

@@ -1,0 +1,167 @@
+﻿@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using MudBlazor
+@using System.ComponentModel.DataAnnotations
+@inject PayableService PayableService
+@inject ISnackbar Snackbar
+@inject ILogger<VendorDialog> Logger
+
+<MudDialog Class="shadcn-dialog">
+    <TitleContent>
+        <div class="d-flex align-center px-6 pt-6 pb-4">
+            <MudIcon Icon="@Icons.Material.Outlined.Business" Class="mr-2 text-muted" Size="Size.Small" />
+            <h3 style="font-size: 1.25rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-main); margin: 0;">
+                @(Vendor?.Id > 0 ? "Edit Vendor" : "Create New Vendor")
+            </h3>
+        </div>
+    </TitleContent>
+
+    <DialogContent>
+        <div class="px-6 pb-2">
+            <MudForm @ref="form" @bind-IsValid="@success" Spacing="4">
+                <MudTextField T="string"
+                              Label="Vendor Name"
+                              Required="true"
+                              RequiredError="Vendor name is required"
+                              @bind-Value="model.Name"
+                              Immediate="true"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="shadcn-input"
+                              HelperText="Legal or business name of the vendor" />
+
+                <MudTextField T="string"
+                              Label="Email"
+                              @bind-Value="model.Email"
+                              Validation="@(new EmailAddressAttribute())"
+                              Immediate="true"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Email"
+                              Margin="Margin.Dense"
+                              Class="shadcn-input"
+                              HelperText="Primary email address for communications" />
+
+                <MudTextField T="string"
+                              Label="Contact Person"
+                              @bind-Value="model.ContactPerson"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="shadcn-input"
+                              HelperText="Primary point of contact at the vendor" />
+            </MudForm>
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <div class="d-flex w-100 justify-end gap-2 px-6 py-4 mt-2">
+            <MudButton OnClick="Cancel"
+                       Variant="Variant.Outlined"
+                       Class="shadcn-btn-outline"
+                       Size="Size.Small">
+                Cancel
+            </MudButton>
+            <MudButton OnClick="Submit"
+                       Variant="Variant.Filled"
+                       Class="custom-button"
+                       Size="Size.Small"
+                       Disabled="isSubmitting"
+                       StartIcon="@(isSubmitting ? null : (Vendor?.Id > 0 ? Icons.Material.Outlined.Save : Icons.Material.Outlined.Add))">
+                @if (isSubmitting)
+                {
+                    <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" Style="color: var(--bg-surface);" />
+                    @(Vendor?.Id > 0 ? "Updating..." : "Creating...")
+                }
+                else
+                {
+                    @(Vendor?.Id > 0 ? "Update" : "Create")
+                }
+            </MudButton>
+        </div>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    /* Clean up the default MudBlazor dialog padding so we can style the header/footer */
+    .shadcn-dialog .mud-dialog-title {
+        padding: 0;
+    }
+
+    .shadcn-dialog .mud-dialog-content {
+        padding: 0;
+    }
+
+    .shadcn-dialog .mud-dialog-actions {
+        padding: 0;
+    }
+</style>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public VendorDTO? Vendor { get; set; }
+
+    private CreateVendorDTO model = new();
+    private bool success;
+    private bool isSubmitting;
+    private MudForm form = default!;
+
+    protected override void OnInitialized()
+    {
+        if (Vendor != null)
+        {
+            model.Name = Vendor.Name;
+            model.Email = Vendor.Email;
+            model.ContactPerson = Vendor.ContactPerson;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        await form.Validate();
+
+        if (!form.IsValid)
+        {
+            Snackbar.Add("Please correct the validation errors.", Severity.Warning);
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            if (Vendor != null && Vendor.Id > 0)
+            {
+                var updateDto = new UpdateVendorDTO
+                {
+                    Id = Vendor.Id,
+                    Name = model.Name,
+                    Email = model.Email,
+                    ContactPerson = model.ContactPerson
+                };
+
+                await PayableService.UpdateVendorAsync(updateDto);
+                Snackbar.Add("Vendor updated successfully!", Severity.Success);
+            }
+            else
+            {
+                await PayableService.CreateVendorAsync(model);
+                Snackbar.Add("Vendor created successfully!", Severity.Success);
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save vendor.");
+            Snackbar.Add("Unable to save vendor. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

@@ -1,0 +1,86 @@
+﻿@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Dialogs
+@using MudBlazor
+@inject LedgerService LedgerService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject ILogger<AccountSelect> Logger
+
+<MudSelect T="int"
+           Label="Account"
+           @bind-Value="InternalAccountId"
+           Adornment="Adornment.End"
+           AdornmentIcon="@Icons.Material.Outlined.Add"
+           OnAdornmentClick="OpenAddDialog"
+           Variant="Variant.Outlined"
+           Margin="Margin.Dense"
+           Class="shadcn-input"
+           AnchorOrigin="Origin.BottomCenter"
+           Disabled="@(accounts == null)"
+           Clearable="true">
+
+    <MudSelectItem Value="0" Disabled="true">Select an account...</MudSelectItem>
+
+        @if (accounts != null)
+        {
+            foreach (var a in accounts)
+            {
+                <MudSelectItem Value="@a.Id">@a.Code - @a.Name (@a.Type)</MudSelectItem>
+            }
+        }
+    </MudSelect>
+
+
+@code {
+    [Parameter] public int SelectedAccountId { get; set; }
+    [Parameter] public EventCallback<int> SelectedAccountIdChanged { get; set; }
+    [Parameter] public string? TypeFilter { get; set; }
+
+    private List<AccountDTO>? accounts = null;
+
+    // Proxy property to handle binding reliably
+    private int InternalAccountId
+    {
+        get => SelectedAccountId;
+        set
+        {
+            if (SelectedAccountId != value)
+            {
+                SelectedAccountId = value;
+                SelectedAccountIdChanged.InvokeAsync(value);
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadAccounts();
+
+    private async Task LoadAccounts()
+    {
+        try
+        {
+            var all = await LedgerService.GetAccountsAsync();
+            // Filter accounts if TypeFilter is provided (e.g., only "Asset" accounts for payments)
+            accounts = string.IsNullOrEmpty(TypeFilter)
+                ? all
+                : all?.Where(a => a.Type.Equals(TypeFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load accounts for account selector.");
+        }
+    }
+
+    private async Task OpenAddDialog()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AccountDialog>("Add New Account", options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadAccounts();
+            Snackbar.Add("Account list refreshed.", Severity.Info);
+        }
+    }
+}

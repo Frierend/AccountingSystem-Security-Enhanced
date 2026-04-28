@@ -1,0 +1,369 @@
+﻿@page "/gl/journal"
+@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Components
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@using System.Globalization
+@using System.Text.RegularExpressions
+@attribute [Authorize(Roles = "Admin,Accounting")]
+@inject LedgerService LedgerService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject ILogger<JournalEntries> Logger
+
+<PageTitle>Journal Entries - AccSys</PageTitle>
+
+<style>
+    /* Responsive Skeletons */
+    @@media (max-width: 599px) {
+        .desktop-skeleton { display: none !important; }
+    }
+    @@media (min-width: 600px) {
+        .mobile-skeleton { display: none !important; }
+    }
+</style>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-6 mb-10">
+    <div class="d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center mb-6 gap-3">
+        <div>
+            @if (_initialLoading)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="200px" Height="32px" Class="mb-1" />
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="100%" Style="max-width: 350px;" Height="16px" />
+            }
+            else
+            {
+                <h2 style="font-size: 1.5rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-main); margin: 0;">
+                    New Journal Entry
+                </h2>
+                <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0.25rem 0 0 0;">
+                    Create balanced debit and credit transactions for the general ledger.
+                </p>
+            }
+        </div>
+    </div>
+
+    @if (_initialLoading)
+    {
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card mb-6">
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" sm="3">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="60px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="3">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="90px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="100px" Height="16px" Class="mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+            <MudCardContent Class="pa-0">
+                <div class="d-flex justify-space-between mb-3 pa-4 border-b desktop-skeleton">
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="100px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="70px" Height="20px" />
+                </div>
+
+                @for (int i = 0; i < 2; i++)
+                {
+                    <div class="d-flex justify-space-between align-center mb-3 px-4 pb-3 desktop-skeleton" style="border-bottom: 1px solid var(--border-color);">
+                        <div style="flex: 2;"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" /></div>
+                        <div style="flex: 1; padding-left: 16px;"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" /></div>
+                        <div style="flex: 1; padding-left: 16px;"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" /></div>
+                        <div style="flex: 0.5; padding-left: 16px; text-align: center;"><MudSkeleton SkeletonType="SkeletonType.Circle" Width="32px" Height="32px" Class="mx-auto" /></div>
+                    </div>
+
+                    <div class="mobile-skeleton d-flex flex-column pa-4 gap-3" style="border-bottom: 1px solid var(--border-color);">
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                        <div class="d-flex gap-3">
+                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="40px" Style="border-radius: 6px;" />
+                        </div>
+                        <div class="d-flex justify-end">
+                            <MudSkeleton SkeletonType="SkeletonType.Circle" Width="32px" Height="32px" />
+                        </div>
+                    </div>
+                }
+
+                <div class="d-flex justify-space-between align-center pa-4 desktop-skeleton" style="background: var(--bg-muted);">
+                    <div style="flex: 2;"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100px" Height="32px" Style="border-radius: 6px;" /></div>
+                    <div style="flex: 1; padding-left: 16px;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="100px" Height="24px" /></div>
+                    <div style="flex: 1; padding-left: 16px;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="100px" Height="24px" /></div>
+                    <div style="flex: 0.5; padding-left: 16px; text-align: center;"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="24px" Style="border-radius: 4px;" Class="mx-auto" /></div>
+                </div>
+
+                <div class="mobile-skeleton d-flex flex-column pa-4 gap-3" style="background: var(--bg-muted);">
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100px" Height="32px" Style="border-radius: 6px;" />
+                    <div class="d-flex justify-space-between align-center">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="24px" />
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="100px" Height="24px" />
+                    </div>
+                    <div class="d-flex justify-space-between align-center">
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="24px" />
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="100px" Height="24px" />
+                    </div>
+                    <div class="d-flex justify-end mt-2">
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="24px" Style="border-radius: 4px;" />
+                    </div>
+                </div>
+            </MudCardContent>
+        </MudCard>
+
+        <div class="d-flex justify-end mt-6">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="140px" Height="40px" Style="border-radius: 6px;" />
+        </div>
+    }
+    else
+    {
+        <EditForm Model="@entry" OnValidSubmit="HandleSubmit">
+            <MudCard Elevation="0" Outlined="true" Class="shadcn-card mb-6">
+                <MudCardContent>
+                    <MudGrid Spacing="3">
+                        <MudItem xs="12" sm="3">
+                            <MudDatePicker Label="Date"
+                                           @bind-Date="entryDate"
+                                           Variant="Variant.Outlined"
+                                           Margin="Margin.Dense"
+                                           Class="shadcn-input" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="3">
+                            <MudTextField Label="Reference #"  Value="@("[Auto-Generated]")" Disabled="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="shadcn-input" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <MudTextField Label="Description"
+                                          @bind-Value="entry.Description"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Class="shadcn-input" />
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+
+            <MudCard Elevation="0" Outlined="true" Class="shadcn-card mb-6">
+                <MudTable Items="@entry.Lines"
+                          Hover="true"
+                          Breakpoint="Breakpoint.Sm"
+                          Elevation="0"
+                          Class="shadcn-table">
+
+                    <HeaderContent>
+                        <MudTh>Account</MudTh>
+                        <MudTh>Debit (₱)</MudTh>
+                        <MudTh>Credit (₱)</MudTh>
+                        <MudTh Style="text-align: center;">Action</MudTh>
+                    </HeaderContent>
+
+                    <RowTemplate Context="lineContext">
+                        <MudTd DataLabel="Account">
+                            <AccountSelect @bind-SelectedAccountId="lineContext.AccountId" />
+                        </MudTd>
+
+                        <MudTd DataLabel="Debit">
+                            <MudTextField @bind-Value="lineContext.Debit"
+                                          Label=""
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Class="shadcn-input"
+                                          InputType="InputType.Number"
+                                          Adornment="Adornment.Start"
+                                          AdornmentText="₱"
+                                          Immediate="true"
+                                          OnKeyDown="@((e) => ValidateNumericInput(e, lineContext, true))"
+                                          OnBlur="@(() => FormatDebitValue(lineContext))" />
+                        </MudTd>
+
+                        <MudTd DataLabel="Credit">
+                            <MudTextField @bind-Value="lineContext.Credit"
+                                          Label=""
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Class="shadcn-input"
+                                          InputType="InputType.Number"
+                                          Adornment="Adornment.Start"
+                                          AdornmentText="₱"
+                                          Immediate="true"
+                                          OnKeyDown="@((e) => ValidateNumericInput(e, lineContext, false))"
+                                          OnBlur="@(() => FormatCreditValue(lineContext))" />
+                        </MudTd>
+
+                        <MudTd Style="text-align: center;" DataLabel="Action">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete"
+                                           Class="shadcn-icon-btn text-destructive"
+                                           Size="Size.Small"
+                                           OnClick="@(() => RemoveLine(lineContext))"
+                                           Disabled="@(entry.Lines.Count <= 2)" />
+                        </MudTd>
+                    </RowTemplate>
+
+                    <FooterContent>
+                        <MudTd>
+                            <MudButton StartIcon="@Icons.Material.Outlined.Add"
+                                       OnClick="AddLine"
+                                       Variant="Variant.Outlined"
+                                       Class="shadcn-btn-outline"
+                                       Size="Size.Small">
+                                Add Line
+                            </MudButton>
+                        </MudTd>
+
+                        <MudTd>
+                            <div style="font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; color: @(IsBalanced ? "var(--color-success)" : "var(--color-destructive)")">
+                                @TotalDebit.ToString("C2", phCulture)
+                            </div>
+                        </MudTd>
+
+                        <MudTd>
+                            <div style="font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; color: @(IsBalanced ? "var(--color-success)" : "var(--color-destructive)")">
+                                @TotalCredit.ToString("C2", phCulture)
+                            </div>
+                        </MudTd>
+
+                        <MudTd Style="text-align: center;">
+                            @if (IsBalanced)
+                            {
+                                <span class="shadcn-badge badge-green">Balanced</span>
+                            }
+                            else
+                            {
+                                <span class="shadcn-badge badge-red">Imbalanced</span>
+                            }
+                        </MudTd>
+                    </FooterContent>
+                </MudTable>
+            </MudCard>
+
+            <div class="d-flex justify-end mt-4">
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Class="custom-button"
+                           Disabled="@(!IsBalanced || isSubmitting)"
+                           Size="Size.Medium"
+                           StartIcon="@Icons.Material.Outlined.Check">
+                    @(isSubmitting ? "Posting..." : "Post Entry")
+                </MudButton>
+            </div>
+        </EditForm>
+    }
+</MudContainer>
+
+@code {
+    // Philippine Peso Culture
+    private readonly CultureInfo phCulture = new("en-PH");
+
+    private JournalEntryDTO entry = new JournalEntryDTO
+    {
+        Date = DateTime.Today,
+        Lines = new List<JournalEntryLineDTO>
+        {
+            new JournalEntryLineDTO(),
+            new JournalEntryLineDTO()
+        }
+    };
+
+    private DateTime? entryDate
+    {
+        get => entry.Date;
+        set => entry.Date = value ?? DateTime.Today;
+    }
+
+    private bool isSubmitting = false;
+    private bool _initialLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Simulate initial load time for accounts/setup
+        await Task.Delay(100);
+        _initialLoading = false;
+        StateHasChanged();
+    }
+
+    private decimal TotalDebit => entry.Lines.Sum(l => l.Debit);
+    private decimal TotalCredit => entry.Lines.Sum(l => l.Credit);
+
+    private bool IsBalanced =>
+        TotalDebit == TotalCredit && TotalDebit > 0;
+
+    private void AddLine()
+        => entry.Lines.Add(new JournalEntryLineDTO());
+
+    private void RemoveLine(JournalEntryLineDTO line)
+    {
+        if (entry.Lines.Count > 2)
+            entry.Lines.Remove(line);
+    }
+
+    /// <summary>
+    /// Validates keyboard input to allow only numeric characters and decimal point
+    /// </summary>
+    private async Task ValidateNumericInput(KeyboardEventArgs e, JournalEntryLineDTO line, bool isDebit)
+    {
+        // Allow: numbers (0-9), decimal point (.), backspace, delete, tab, enter, arrow keys
+        var allowedKeys = new[] { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".", 
+                                  "Backspace", "Delete", "Tab", "Enter", "ArrowLeft", "ArrowRight", 
+                                  "ArrowUp", "ArrowDown", "Home", "End" };
+
+        // Prevent non-numeric input using JavaScript
+        if (!allowedKeys.Contains(e.Key))
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "event.preventDefault()");
+        }
+    }
+
+    private void FormatDebitValue(JournalEntryLineDTO line)
+    {
+        // Ensure non-negative value
+        if (line.Debit < 0)
+            line.Debit = 0;
+
+        // Round to 2 decimal places
+        line.Debit = Math.Round(line.Debit, 2);
+    }
+
+    private void FormatCreditValue(JournalEntryLineDTO line)
+    {
+        // Ensure non-negative value
+        if (line.Credit < 0)
+            line.Credit = 0;
+
+        // Round to 2 decimal places
+        line.Credit = Math.Round(line.Credit, 2);
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (!IsBalanced) return;
+
+        isSubmitting = true;
+        try
+        {
+            await LedgerService.PostJournalEntryAsync(entry);
+            Snackbar.Add("Journal Entry posted.", Severity.Success);
+            NavManager.NavigateTo("/gl/journal", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to post journal entry.");
+            Snackbar.Add("Unable to post journal entry. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

@@ -1,0 +1,112 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+
+<div class="shadcn-nav-wrapper">
+    <MudNavMenu Dense="true" Class="shadcn-nav-menu">
+
+        <AuthorizeView Roles="SuperAdmin">
+            <div class="nav-section-label">Super Admin</div>
+            <MudNavLink Href="superadmin/dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Security">System Overview</MudNavLink>
+            <MudNavLink Href="superadmin/tenants" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Business">Tenant Manager</MudNavLink>
+            <MudNavLink Href="superadmin/users" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Group">Global Users</MudNavLink>
+            <MudNavLink Href="superadmin/audit-logs" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.History">Admin Audit Logs</MudNavLink>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Admin,Accounting,Management">
+            <div class="nav-section-label">Overview</div>
+            <MudNavLink Href="dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Dashboard">Dashboard</MudNavLink>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Admin">
+            <div class="nav-section-label">Administration</div>
+            <MudNavLink Href="admin/users" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.People">User Management</MudNavLink>
+            <MudNavLink Href="admin/audit-logs" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.History">Audit Logs</MudNavLink>
+            <MudNavLink Href="admin/company-settings" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Settings">Company Settings</MudNavLink>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Admin,Accounting">
+            <div class="nav-section-label">General Ledger</div>
+            <MudNavLink Href="gl/journal" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.EditNote">Journal Entries</MudNavLink>
+            <MudNavLink Href="gl/accounts" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.AccountTree">Chart of Accounts</MudNavLink>
+
+            <div class="nav-section-label">Accounts Payable</div>
+            <MudNavLink Href="ap" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.RequestQuote">Bills</MudNavLink>
+
+            <div class="nav-section-label">Accounts Receivable</div>
+            <MudNavLink Href="ar" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.ReceiptLong">Invoices</MudNavLink>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Admin,Accounting,Management">
+            <div class="nav-section-label">Reporting</div>
+            <MudNavLink Href="reports/financials" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Analytics">Financial Statements</MudNavLink>
+        </AuthorizeView>
+
+    </MudNavMenu>
+</div>
+
+<style>
+    /* ── Wrapper ─────────────────────────────────────────── */
+    .shadcn-nav-wrapper {
+        padding: 0.5rem 0;
+    }
+
+    .shadcn-nav-menu {
+        padding: 0 !important;
+    }
+
+    /* ── Section Labels ───────────────────────────────────── */
+    .nav-section-label {
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
+        padding: 1.25rem 1rem 0.3rem 1rem;
+        user-select: none;
+    }
+
+        .nav-section-label:first-of-type {
+            padding-top: 0.25rem;
+        }
+
+    /* ── Nav Links ────────────────────────────────────────── */
+    .shadcn-nav-menu .mud-nav-link {
+        color: var(--text-muted) !important;
+        margin: 1px 8px !important;
+        border-radius: 6px !important;
+        padding: 7px 10px !important;
+        font-size: 0.875rem !important;
+        font-weight: 500 !important;
+        transition: background-color 0.15s ease, color 0.15s ease !important;
+        line-height: 1.4;
+    }
+
+        /* Hover */
+        .shadcn-nav-menu .mud-nav-link:hover {
+            background-color: var(--bg-muted) !important;
+            color: var(--text-main) !important;
+        }
+
+        /* Active — both classes MudBlazor can apply */
+        .shadcn-nav-menu .mud-nav-link.active,
+        .shadcn-nav-menu .mud-nav-link-active {
+            background-color: var(--bg-muted) !important;
+            color: var(--text-main) !important;
+            font-weight: 600 !important;
+        }
+
+    /* ── Icons ────────────────────────────────────────────── */
+    .shadcn-nav-menu .mud-nav-link-icon {
+        color: inherit !important;
+        margin-right: 10px !important;
+        font-size: 1rem !important;
+        opacity: 0.75;
+        flex-shrink: 0;
+    }
+
+    .shadcn-nav-menu .mud-nav-link:hover .mud-nav-link-icon,
+    .shadcn-nav-menu .mud-nav-link.active .mud-nav-link-icon,
+    .shadcn-nav-menu .mud-nav-link-active .mud-nav-link-icon {
+        opacity: 1;
+    }
+</style>

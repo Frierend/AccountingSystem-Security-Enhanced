@@ -1,0 +1,187 @@
+﻿@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using MudBlazor
+@inject LedgerService LedgerService
+@inject ISnackbar Snackbar
+@inject ILogger<AccountDialog> Logger
+
+<MudDialog Class="shadcn-dialog">
+    <TitleContent>
+        <div class="d-flex align-center px-6 pt-6 pb-4">
+            <MudIcon Icon="@Icons.Material.Outlined.AccountBalance" Class="mr-2 text-muted" Size="Size.Small" />
+            <h3 style="font-size: 1.25rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-main); margin: 0;">
+                @(Account?.Id > 0 ? "Edit Account" : "Create New Account")
+            </h3>
+        </div>
+    </TitleContent>
+
+    <DialogContent>
+        <div class="px-6 pb-2">
+            <MudForm @ref="form" @bind-IsValid="@success" Spacing="4">
+                <MudTextField T="string"
+                              Label="Account Code"
+                              Required="true"
+                              RequiredError="Code is required"
+                              @bind-Value="model.Code"
+                              MaxLength="10"
+                              Counter="10"
+                              Immediate="true"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="shadcn-input"
+                              HelperText="Unique identifier for the account (max 10 characters)" />
+
+                <MudTextField T="string"
+                              Label="Account Name"
+                              Required="true"
+                              RequiredError="Name is required"
+                              @bind-Value="model.Name"
+                              Immediate="true"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="shadcn-input"
+                              HelperText="Descriptive name for the account" />
+
+                <MudSelect T="string"
+                           Label="Account Type"
+                           Required="true"
+                           RequiredError="Type is required"
+                           @bind-Value="model.Type"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Class="shadcn-input"
+                           AnchorOrigin="Origin.BottomCenter"
+                           HelperText="Select the classification of this account">
+                    <MudSelectItem Value="@("Asset")">
+                        <MudIcon Icon="@Icons.Material.Outlined.TrendingUp" Size="Size.Small" Class="mr-2 text-muted" />Asset
+                    </MudSelectItem>
+                    <MudSelectItem Value="@("Liability")">
+                        <MudIcon Icon="@Icons.Material.Outlined.TrendingDown" Size="Size.Small" Class="mr-2 text-muted" />Liability
+                    </MudSelectItem>
+                    <MudSelectItem Value="@("Equity")">
+                        <MudIcon Icon="@Icons.Material.Outlined.AccountBalanceWallet" Size="Size.Small" Class="mr-2 text-muted" />Equity
+                    </MudSelectItem>
+                    <MudSelectItem Value="@("Revenue")">
+                        <MudIcon Icon="@Icons.Material.Outlined.Payments" Size="Size.Small" Class="mr-2 text-muted" />Revenue
+                    </MudSelectItem>
+                    <MudSelectItem Value="@("Expense")">
+                        <MudIcon Icon="@Icons.Material.Outlined.ShoppingCart" Size="Size.Small" Class="mr-2 text-muted" />Expense
+                    </MudSelectItem>
+                </MudSelect>
+            </MudForm>
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <div class="d-flex w-100 justify-end gap-2 px-6 py-4">
+            <MudButton OnClick="Cancel"
+                       Variant="Variant.Outlined"
+                       Class="shadcn-btn-outline"
+                       Size="Size.Small">
+                Cancel
+            </MudButton>
+            <MudButton OnClick="Submit"
+                       Variant="Variant.Filled"
+                       Class="custom-button"
+                       Size="Size.Small"
+                       Disabled="isSubmitting"
+                       StartIcon="@(isSubmitting ? null : (Account?.Id > 0 ? Icons.Material.Outlined.Save : Icons.Material.Outlined.Add))">
+                @if (isSubmitting)
+                {
+                    <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" Style="color: var(--bg-surface);" />
+                    @(Account?.Id > 0 ? "Updating..." : "Creating...")
+                }
+                else
+                {
+                    @(Account?.Id > 0 ? "Update" : "Create")
+                }
+            </MudButton>
+        </div>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    /* Clean up the default MudBlazor dialog padding so we can style the header/footer */
+    .shadcn-dialog .mud-dialog-title {
+        padding: 0;
+    }
+
+    .shadcn-dialog .mud-dialog-content {
+        padding: 0;
+    }
+
+    .shadcn-dialog .mud-dialog-actions {
+        padding: 0;
+    }
+</style>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public AccountDTO? Account { get; set; }
+
+    private CreateAccountDTO model = new();
+    private bool success;
+    private bool isSubmitting;
+    private MudForm form = default!;
+
+    protected override void OnInitialized()
+    {
+        if (Account != null)
+        {
+            model.Code = Account.Code ?? string.Empty;
+            model.Name = Account.Name ?? string.Empty;
+            model.Type = Account.Type ?? string.Empty;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        await form.Validate();
+
+        if (!form.IsValid)
+        {
+            Snackbar.Add("Please correct the validation errors.", Severity.Warning);
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            if (Account != null && Account.Id > 0)
+            {
+                var updateDto = new UpdateAccountDTO
+                {
+                    Id = Account.Id,
+                    Code = model.Code ?? string.Empty,
+                    Name = model.Name ?? string.Empty,
+                    Type = model.Type ?? string.Empty
+                };
+
+                await LedgerService.UpdateAccountAsync(updateDto);
+                Snackbar.Add("Account updated successfully!", Severity.Success);
+            }
+            else
+            {
+                await LedgerService.CreateAccountAsync(model);
+                Snackbar.Add("Account created successfully!", Severity.Success);
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save account.");
+            Snackbar.Add("Unable to save account. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

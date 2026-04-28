@@ -1,0 +1,106 @@
+﻿@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Dialogs
+@using MudBlazor
+@inject ReceivableService ReceivableService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject ILogger<CustomerSelect> Logger
+
+<Microsoft.AspNetCore.Components.Authorization.AuthorizeView Roles="Admin,Accounting,Management">
+    <MudAutocomplete T="CustomerDTO"
+                     Label="Customer"
+                     Value="_selectedCustomer"
+                     ValueChanged="OnValueChanged"
+                     SearchFunc="@SearchCustomers"
+                     ToStringFunc="@(c => c == null ? null : c.Name)"
+                     Adornment="Adornment.End"
+                     AdornmentIcon="@Icons.Material.Outlined.Add"
+                     OnAdornmentClick="OpenAddDialog"
+                     Variant="Variant.Outlined"
+                     Margin="Margin.Dense"
+                     Class="shadcn-input"
+                     Disabled="@(customers == null)"
+                     Clearable="true"
+                     ResetValueOnEmptyText="true"
+                     CoerceText="true"
+                     CoerceValue="true"
+                     Placeholder="Search or add customer..." />
+</Microsoft.AspNetCore.Components.Authorization.AuthorizeView>
+
+@code {
+    [Parameter] public int SelectedCustomerId { get; set; }
+    [Parameter] public EventCallback<int> SelectedCustomerIdChanged { get; set; }
+
+    private List<CustomerDTO>? customers;
+    private CustomerDTO? _selectedCustomer;
+
+    protected override async Task OnInitializedAsync() => await LoadCustomers();
+
+    protected override void OnParametersSet()
+    {
+        if (customers != null)
+        {
+            if (SelectedCustomerId == 0)
+            {
+                _selectedCustomer = null;
+            }
+            else if (_selectedCustomer?.Id != SelectedCustomerId)
+            {
+                _selectedCustomer = customers.FirstOrDefault(c => c.Id == SelectedCustomerId);
+            }
+        }
+    }
+
+    private async Task LoadCustomers()
+    {
+        try
+        {
+            // Use ConfigureAwait(true) or omit to ensure we return to the UI thread context
+            customers = await ReceivableService.GetCustomersAsync();
+            if (SelectedCustomerId != 0 && customers != null)
+            {
+                _selectedCustomer = customers.FirstOrDefault(c => c.Id == SelectedCustomerId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load customers for customer selector.");
+        }
+    }
+
+    private async Task OnValueChanged(CustomerDTO? value)
+    {
+        _selectedCustomer = value;
+        SelectedCustomerId = value?.Id ?? 0;
+        await SelectedCustomerIdChanged.InvokeAsync(SelectedCustomerId);
+    }
+
+    private Task<IEnumerable<CustomerDTO>> SearchCustomers(string? value, CancellationToken token)
+    {
+        if (customers == null) return Task.FromResult(Enumerable.Empty<CustomerDTO>());
+
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult(customers.AsEnumerable());
+
+        return Task.FromResult(customers.Where(x =>
+            x.Name.Contains(value, StringComparison.InvariantCultureIgnoreCase)));
+    }
+
+    private async Task OpenAddDialog()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CustomerDialog>("Add New Customer", options);
+
+        if (dialog != null)
+        {
+            var result = await dialog.Result;
+
+            if (result != null && !result.Canceled)
+            {
+                await LoadCustomers();
+                Snackbar.Add("Customer list refreshed.", Severity.Info);
+            }
+        }
+    }
+}

@@ -1,0 +1,367 @@
+﻿@page "/customers"
+@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Dialogs
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@attribute [Authorize(Roles = "Admin,Accounting,Management")]
+@inject ReceivableService ReceivableService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject ILogger<Customers> Logger
+
+<PageTitle>Account Recievable - AccSys</PageTitle>
+
+<style>
+    /* Responsive Filters & Tweaks */
+    .table-toolbar-wrapper {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        gap: 1rem;
+    }
+
+    .table-toolbar-actions {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .filter-search {
+        width: 100%;
+        max-width: 300px;
+    }
+
+    /* Responsive Skeletons */
+    @@media (max-width: 599px) {
+        .desktop-skeleton { display: none !important; }
+
+        .table-toolbar-wrapper {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .table-toolbar-actions {
+            flex-direction: column;
+            width: 100%;
+            align-items: stretch; /* Make inputs fill the container */
+        }
+
+        .filter-search {
+            max-width: 100%;
+        }
+    }
+
+    @@media (min-width: 600px) {
+        .mobile-skeleton { display: none !important; }
+    }
+</style>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6 mb-10">
+    <div class="d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center mb-6 gap-3">
+        <div>
+            @if (_initialLoading)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="230px" Height="32px" Class="mb-1" />
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="100%" Style="max-width: 440px;" Height="16px" />
+            }
+            else
+            {
+                <h2 style="font-size: 1.5rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-main); margin: 0;">
+                    Customer Management
+                </h2>
+                <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0.25rem 0 0 0;">
+                    Manage customer relationships and track accounts receivable contacts.
+                </p>
+            }
+        </div>
+        @if (_initialLoading)
+        {
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="160px" Height="36px" Style="border-radius: 6px;" />
+        }
+        else
+        {
+            <AuthorizeView Roles="Admin,Accounting" Context="authContext">
+                <MudButton Variant="Variant.Filled"
+                           Class="custom-button"
+                           StartIcon="@Icons.Material.Outlined.Add"
+                           Size="Size.Small"
+                           OnClick="OpenAddDialog">
+                    Add Customer
+                </MudButton>
+            </AuthorizeView>
+        }
+    </div>
+
+    @if (_initialLoading)
+    {
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+            <div class="d-flex pa-4 border-b">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="150px" Height="24px" Class="mr-4" />
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="170px" Height="24px" Class="desktop-skeleton" />
+            </div>
+
+            <MudCardContent Class="pa-0">
+                <div class="d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center pa-4 border-b gap-3">
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="120px" Height="24px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Style="max-width: 250px;" Height="36px" Class="rounded-md" />
+                </div>
+
+                <div class="d-flex justify-space-between mb-2 pa-4 border-b desktop-skeleton gap-2">
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="40px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="150px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="180px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="120px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="20px" />
+                </div>
+
+                @for (int i = 0; i < 6; i++)
+                {
+                    <div class="d-flex justify-space-between align-center py-3 px-4 desktop-skeleton gap-4" style="border-bottom: 1px solid var(--border-color);">
+                        <div style="flex: 0.5;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="30px" Height="16px" /></div>
+                        <div style="flex: 2;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="160px" Height="16px" /></div>
+                        <div style="flex: 2;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="180px" Height="16px" /></div>
+                        <div style="flex: 1.5;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="120px" Height="16px" /></div>
+                        <div style="flex: 1; text-align: right;">
+                            <div class="d-flex justify-end gap-2">
+                                <MudSkeleton SkeletonType="SkeletonType.Circle" Width="28px" Height="28px" />
+                                <MudSkeleton SkeletonType="SkeletonType.Circle" Width="28px" Height="28px" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex flex-column py-3 px-4 mobile-skeleton gap-2" style="border-bottom: 1px solid var(--border-color);">
+                        <div class="d-flex justify-space-between align-center">
+                            <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" Height="16px" />
+                            <MudSkeleton SkeletonType="SkeletonType.Text" Width="20%" Height="14px" />
+                        </div>
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="60%" Height="14px" />
+                        <div class="d-flex justify-space-between align-center mt-1">
+                            <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" Height="14px" />
+                            <div class="d-flex gap-2">
+                                <MudSkeleton SkeletonType="SkeletonType.Circle" Width="28px" Height="28px" />
+                                <MudSkeleton SkeletonType="SkeletonType.Circle" Width="28px" Height="28px" />
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <div class="d-flex justify-end pa-4">
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Style="max-width: 250px;" Height="32px" Class="rounded-md" />
+                </div>
+            </MudCardContent>
+        </MudCard>
+    }
+    else
+    {
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pt-4" Class="shadcn-tabs">
+
+            <MudTabPanel Text="Active Customers" OnClick="@(() => LoadList(false))">
+                <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+                    <MudTable Items="@customers" Dense="true" Hover="true" Elevation="0" Filter="new Func<CustomerDTO, bool>(FilterFunc)" Loading="@_loading" Class="shadcn-table" Breakpoint="Breakpoint.Sm">
+                        <ToolBarContent>
+                            <div class="table-toolbar-wrapper">
+                                <div style="font-size: 1.125rem; font-weight: 600; color: var(--text-main);">Active List</div>
+                                <div class="table-toolbar-actions">
+                                    <MudTextField @bind-Value="searchString"
+                                                  Placeholder="Search customers..."
+                                                  Adornment="Adornment.Start"
+                                                  AdornmentIcon="@Icons.Material.Outlined.Search"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense"
+                                                  Class="shadcn-input filter-search m-0"></MudTextField>
+                                </div>
+                            </div>
+                        </ToolBarContent>
+                        <HeaderContent>
+                            <MudTh>ID</MudTh>
+                            <MudTh>Name</MudTh>
+                            <MudTh>Email</MudTh>
+                            <MudTh>Phone</MudTh>
+                            <AuthorizeView Roles="Admin,Accounting" Context="authContext">
+                                <MudTh Style="text-align:right">Actions</MudTh>
+                            </AuthorizeView>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="ID" Style="color: var(--text-muted);">@context.Id</MudTd>
+                            <MudTd DataLabel="Name" Style="font-weight: 500; color: var(--text-main);">@context.Name</MudTd>
+                            <MudTd DataLabel="Email" Style="color: var(--text-muted);">@context.Email</MudTd>
+                            <MudTd DataLabel="Phone" Style="color: var(--text-muted);">@context.Phone</MudTd>
+                            <AuthorizeView Roles="Admin,Accounting" Context="authContext">
+                                <MudTd DataLabel="Actions" Style="text-align:right">
+                                    <MudIconButton Icon="@Icons.Material.Outlined.Edit"
+                                                   Size="Size.Small"
+                                                   Class="shadcn-icon-btn mr-1"
+                                                   OnClick="() => OpenEditDialog(context)" />
+                                    <MudIconButton Icon="@Icons.Material.Outlined.Archive"
+                                                   Size="Size.Small"
+                                                   Class="shadcn-icon-btn text-destructive"
+                                                   OnClick="() => ConfirmDelete(context.Id)" />
+                                </MudTd>
+                            </AuthorizeView>
+                        </RowTemplate>
+                        <PagerContent><MudTablePager /></PagerContent>
+                    </MudTable>
+                </MudCard>
+            </MudTabPanel>
+
+            <AuthorizeView Roles="Admin,Accounting" Context="authContext">
+                <MudTabPanel Text="Archived Customers" OnClick="@(() => LoadList(true))">
+                    <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+                        <MudTable Items="@customers" Dense="true" Hover="true" Elevation="0" Filter="new Func<CustomerDTO, bool>(FilterFunc)" Loading="@_loading" Class="shadcn-table" Breakpoint="Breakpoint.Sm">
+                            <ToolBarContent>
+                                <div class="table-toolbar-wrapper">
+                                    <div style="font-size: 1.125rem; font-weight: 600; color: var(--text-main);">Archived List</div>
+                                    <div class="table-toolbar-actions">
+                                        <MudTextField @bind-Value="searchString"
+                                                      Placeholder="Search archived..."
+                                                      Adornment="Adornment.Start"
+                                                      AdornmentIcon="@Icons.Material.Outlined.Search"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Class="shadcn-input filter-search m-0"></MudTextField>
+                                    </div>
+                                </div>
+                            </ToolBarContent>
+                            <HeaderContent>
+                                <MudTh>ID</MudTh>
+                                <MudTh>Name</MudTh>
+                                <MudTh>Email</MudTh>
+                                <MudTh Style="text-align:right">Actions</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="ID" Style="color: var(--text-muted);">@context.Id</MudTd>
+                                <MudTd DataLabel="Name" Style="color: var(--text-muted); text-decoration: line-through;">@context.Name</MudTd>
+                                <MudTd DataLabel="Email" Style="color: var(--text-muted);">@context.Email</MudTd>
+                                <MudTd DataLabel="Actions" Style="text-align:right">
+                                    <MudTooltip Text="Restore Customer">
+                                        <MudIconButton Icon="@Icons.Material.Outlined.RestoreFromTrash"
+                                                       Size="Size.Small"
+                                                       Class="shadcn-icon-btn text-success"
+                                                       OnClick="() => ConfirmRestore(context.Id)" />
+                                    </MudTooltip>
+                                </MudTd>
+                            </RowTemplate>
+                            <PagerContent><MudTablePager /></PagerContent>
+                        </MudTable>
+                    </MudCard>
+                </MudTabPanel>
+            </AuthorizeView>
+        </MudTabs>
+    }
+</MudContainer>
+
+@code {
+    private List<CustomerDTO> customers = new List<CustomerDTO>();
+    private string searchString = "";
+    private bool _loading = true;
+    private bool _initialLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadList(false);
+        _initialLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadList(bool archived)
+    {
+        _loading = true;
+        try
+        {
+            var all = await ReceivableService.GetCustomersAsync(archived);
+            if (archived)
+                // Filter "All" list to show ONLY deleted
+                customers = all?.Where(c => c.IsDeleted).ToList() ?? new List<CustomerDTO>();
+            else
+                // Trust API default filter for Active
+                customers = all ?? new List<CustomerDTO>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load customers.");
+            Snackbar.Add("Failed to load customers. Please try again.", Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+
+    private bool FilterFunc(CustomerDTO element)
+    {
+        if (string.IsNullOrWhiteSpace(searchString)) return true;
+        if (element.Name.Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
+        if (element.Email?.Contains(searchString, StringComparison.OrdinalIgnoreCase) == true) return true;
+        return false;
+    }
+
+    private async Task OpenAddDialog()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CustomerDialog>("Add Customer", options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled) await LoadList(false);
+    }
+
+    private async Task OpenEditDialog(CustomerDTO customer)
+    {
+        var parameters = new DialogParameters { ["Customer"] = customer };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CustomerDialog>("Edit Customer", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled) await LoadList(false);
+    }
+
+    private async Task ConfirmDelete(int id)
+    {
+        bool result = await ShowConfirmDialog(
+            "Archive this customer?",
+            "Archived customers are hidden from active customer lists.",
+            "Archive",
+            Color.Error);
+        if (result == true)
+        {
+            try { await ReceivableService.DeleteCustomerAsync(id); Snackbar.Add("Customer archived.", Severity.Success); await LoadList(false); }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to archive customer with id {CustomerId}.", id);
+                Snackbar.Add("Unable to archive customer. Please try again.", Severity.Error);
+            }
+        }
+    }
+
+    private async Task ConfirmRestore(int id)
+    {
+        bool result = await ShowConfirmDialog(
+            "Restore this customer?",
+            "This customer will return to active customer lists.",
+            "Restore",
+            Color.Success);
+        if (result == true)
+        {
+            try { await ReceivableService.RestoreCustomerAsync(id); Snackbar.Add("Customer restored.", Severity.Success); await LoadList(true); }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to restore customer with id {CustomerId}.", id);
+                Snackbar.Add("Unable to restore customer. Please try again.", Severity.Error);
+            }
+        }
+    }
+
+    private async Task<bool> ShowConfirmDialog(string content, string subText, string buttonText, Color color)
+    {
+        var parameters = new DialogParameters
+        {
+            [nameof(ShadcnConfirmDialog.ContentText)] = content,
+            [nameof(ShadcnConfirmDialog.SubText)] = subText,
+            [nameof(ShadcnConfirmDialog.ButtonText)] = buttonText,
+            [nameof(ShadcnConfirmDialog.Color)] = color
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ShadcnConfirmDialog>("Confirm", parameters, options);
+        var result = await dialog.Result;
+        return result is not null && !result.Canceled;
+    }
+}

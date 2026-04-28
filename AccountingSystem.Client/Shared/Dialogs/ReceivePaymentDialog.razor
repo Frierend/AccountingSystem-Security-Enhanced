@@ -1,0 +1,257 @@
+﻿@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Components
+@using AccountingSystem.Shared.Enums
+@using MudBlazor
+@using Blazored.LocalStorage
+@using System.Globalization
+@inject ReceivableService ReceivableService
+@inject PaymentClientService PaymentService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavManager
+@inject ILocalStorageService LocalStorage
+@inject ILogger<ReceivePaymentDialog> Logger
+
+<MudDialog Class="shadcn-dialog">
+    <TitleContent>
+        <div class="d-flex align-center px-6 pt-6 pb-4">
+            <MudIcon Icon="@Icons.Material.Outlined.Receipt" Class="mr-2 text-muted" Size="Size.Small" />
+            <h3 style="font-size: 1.25rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-main); margin: 0;">
+                Record Invoice Payment
+            </h3>
+        </div>
+    </TitleContent>
+
+    <DialogContent>
+        <div class="px-6 pb-2">
+            <div class="pa-4 mb-6" style="background-color: var(--bg-muted); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <div class="d-flex justify-space-between align-center">
+                    <div style="font-size: 0.875rem; color: var(--text-main);">
+                        <span style="color: var(--text-muted); margin-right: 4px;">Customer:</span>
+                        <span style="font-weight: 500;">@Invoice.CustomerName</span>
+                    </div>
+                    <div style="font-size: 1rem; font-weight: 600; color: var(--color-success); font-variant-numeric: tabular-nums;">
+                        <span style="color: var(--text-muted); font-size: 0.875rem; font-weight: 400; margin-right: 4px;">Balance:</span>
+                        @Invoice.Balance.ToString("C2", _phCulture)
+                    </div>
+                </div>
+            </div>
+
+            <MudForm @ref="form" @bind-IsValid="@success" Spacing="4">
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="PaymentMethod"
+                                   Label="Payment Method"
+                                   @bind-Value="model.PaymentMethod"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Class="shadcn-input"
+                                   Required="true"
+                                   RequiredError="Payment method is required"
+                                   AnchorOrigin="Origin.BottomCenter"
+                                   HelperText="How the payment will be received">
+                            <MudSelectItem Value="@PaymentMethod.Cash">
+                                <MudIcon Icon="@Icons.Material.Outlined.Money" Size="Size.Small" Class="mr-2 text-muted" />Cash
+                            </MudSelectItem>
+                            <MudSelectItem Value="@PaymentMethod.Check">
+                                <MudIcon Icon="@Icons.Material.Outlined.CheckCircle" Size="Size.Small" Class="mr-2 text-muted" />Check
+                            </MudSelectItem>
+                            <MudSelectItem Value="@PaymentMethod.Online">
+                                <MudIcon Icon="@Icons.Material.Outlined.CreditCard" Size="Size.Small" Class="mr-2 text-muted" />Online (PayMongo)
+                            </MudSelectItem>
+                            <MudSelectItem Value="@PaymentMethod.BankTransfer">
+                                <MudIcon Icon="@Icons.Material.Outlined.AccountBalance" Size="Size.Small" Class="mr-2 text-muted" />Bank Transfer
+                            </MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField T="decimal"
+                                         Label="Amount Received"
+                                         @bind-Value="model.Amount"
+                                         Format="N2"
+                                         Variant="Variant.Outlined"
+                                         Margin="Margin.Dense"
+                                         Class="shadcn-input"
+                                         Min="0.01M"
+                                         Max="@Invoice.Balance"
+                                         Required="true"
+                                         RequiredError="Amount is required"
+                                         Immediate="true"
+                                         HelperText="@($"Maximum: {Invoice.Balance.ToString("C2", _phCulture)}")"
+                                         AdornmentText="₱"
+                                         Adornment="Adornment.Start"
+                                         HideSpinButtons="true" />
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <AccountSelect @bind-SelectedAccountId="model.AssetAccountId"
+                                       TypeFilter="Asset" />
+                        <div class="d-flex align-center mt-1" style="font-size: 0.75rem; color: var(--text-muted);">
+                            <MudIcon Icon="@Icons.Material.Outlined.Info" Size="Size.Small" Class="mr-1" Style="font-size: 14px;" />
+                            @(model.PaymentMethod == PaymentMethod.Online
+                                                        ? "Where should the online payment settle?"
+                                                        : "Select the Cash/Bank account to deposit funds into")
+                        </div>
+                    </MudItem>
+
+                    @if (model.PaymentMethod != PaymentMethod.Online)
+                    {
+                        <MudItem xs="12" sm="6">
+                            <MudDatePicker Label="Payment Date"
+                                           @bind-Date="date"
+                                           Variant="Variant.Outlined"
+                                           Margin="Margin.Dense"
+                                           Class="shadcn-input"
+                                           Required="true"
+                                           RequiredError="Payment date is required"
+                                           HelperText="Date the payment was received"
+                                           MaxDate="DateTime.Today" />
+                        </MudItem>
+                    <MudItem xs="12" sm="6">
+                            <MudTextField Label="Reference Number" Value="@("[Auto-Generated]")" Disabled="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="shadcn-input" />
+                    </MudItem>
+                    }
+
+                    <MudItem xs="12">
+                        <MudTextField Label="Remarks"
+                                      @bind-Value="model.Remarks"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Class="shadcn-input"
+                                      Lines="3"
+                                      HelperText="Additional notes about this payment" />
+                    </MudItem>
+                </MudGrid>
+            </MudForm>
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <div class="d-flex w-100 justify-end gap-2 px-6 py-4 mt-2">
+            <MudButton OnClick="Cancel"
+                       Variant="Variant.Outlined"
+                       Class="shadcn-btn-outline"
+                       Size="Size.Small">
+                Cancel
+            </MudButton>
+            <MudButton OnClick="Submit"
+                       Variant="Variant.Filled"
+                       Class="custom-button"
+                       Size="Size.Small"
+                       Disabled="@(!success || isSubmitting)"
+                       StartIcon="@(isSubmitting ? null : (model.PaymentMethod == PaymentMethod.Online ? Icons.Material.Outlined.Link : Icons.Material.Outlined.Payment))">
+                @if (isSubmitting)
+                {
+                    <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" Style="color: var(--bg-surface);" />
+                    <span>Processing...</span>
+                }
+                else if (model.PaymentMethod == PaymentMethod.Online)
+                {
+                    <span>Generate Link</span>
+                }
+                else
+                {
+                    <span>Receive Payment</span>
+                }
+            </MudButton>
+        </div>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    /* Clean up the default MudBlazor dialog padding so we can style the header/footer */
+    .shadcn-dialog .mud-dialog-title {
+        padding: 0;
+    }
+
+    .shadcn-dialog .mud-dialog-content {
+        padding: 0;
+    }
+
+    .shadcn-dialog .mud-dialog-actions {
+        padding: 0;
+    }
+</style>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public InvoiceDTO Invoice { get; set; } = default!;
+
+    private RecordPaymentDTO model = new();
+    private DateTime? date = DateTime.Today;
+    private MudForm form = default!;
+    private bool success;
+    private bool isSubmitting;
+    private readonly CultureInfo _phCulture = CultureInfo.GetCultureInfo("en-PH");
+
+    protected override void OnInitialized()
+    {
+        model.ReferenceId = Invoice.Id;
+        model.Amount = Invoice.Balance;
+        model.PaymentMethod = PaymentMethod.Cash;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        await form.Validate();
+
+        if (!form.IsValid)
+        {
+            Snackbar.Add("Please correct the validation errors.", Severity.Warning);
+            return;
+        }
+
+        if (model.AssetAccountId == 0)
+        {
+            Snackbar.Add("Please select a destination account.", Severity.Error);
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            if (model.PaymentMethod == PaymentMethod.Online)
+            {
+                var callbackUrl = NavManager.BaseUri + $"payment-callback?invoiceId={Invoice.Id}&accountId={model.AssetAccountId}&amount={model.Amount}";
+
+                var sourceDto = new CreateSourceDTO
+                {
+                    Amount = model.Amount,
+                    Description = $"Invoice #{Invoice.Id}",
+                    Remarks = model.Remarks,
+                    SuccessUrl = callbackUrl,
+                    FailedUrl = callbackUrl
+                };
+
+                var result = await PaymentService.CreatePaymentSourceFullAsync(sourceDto);
+                await LocalStorage.SetItemAsync("pending_payment_source_id", result.SourceId);
+
+                NavManager.NavigateTo(result.CheckoutUrl, forceLoad: true);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                model.PaymentDate = date ?? DateTime.Today;
+                var result = await ReceivableService.ReceivePaymentAsync(model);
+                Snackbar.Add($"Payment {result?.ReferenceNumber ?? ""} received successfully!", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to record invoice payment.");
+            Snackbar.Add("Unable to record payment. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

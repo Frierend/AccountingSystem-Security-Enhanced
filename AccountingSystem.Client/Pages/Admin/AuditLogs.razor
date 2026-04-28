@@ -1,0 +1,422 @@
+﻿@page "/admin/audit-logs"
+@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Dialogs
+@using Microsoft.AspNetCore.Authorization
+@using MudBlazor
+@attribute [Authorize(Roles = "Admin")]
+@inject AuditLogService AuditService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject ILogger<AuditLogs> Logger
+
+<PageTitle>Audit Logs - AccSys</PageTitle>
+
+<style>
+    /* Shadcn-style custom badges for the action column */
+    .shadcn-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .badge-slate { background-color: #f1f5f9; color: #475569; }
+    .badge-purple { background-color: #f3e8ff; color: #7e22ce; }
+    .badge-blue { background-color: #e0f2fe; color: #0369a1; }
+    .badge-orange { background-color: #ffedd5; color: #c2410c; }
+    .badge-green { background-color: #dcfce7; color: #15803d; }
+    .badge-red { background-color: #fee2e2; color: #b91c1c; }
+    .badge-indigo { background-color: #e0e7ff; color: #4338ca; }
+
+    /* Fix for MudBlazor inputs inside a shadcn aesthetic */
+    .shadcn-filter-panel .mud-input-control-input-container {
+        border-radius: var(--radius-md);
+    }
+
+    /* Responsive Skeletons */
+    @@media (max-width: 599px) {
+        .desktop-skeleton { display: none !important; }
+    }
+    @@media (min-width: 600px) {
+        .mobile-skeleton { display: none !important; }
+    }
+</style>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-6 mb-10">
+    <div class="d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center mb-6 gap-3">
+        <div>
+            @if (_initialLoading)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="150px" Height="32px" Class="mb-1" />
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="100%" Style="max-width: 300px;" Height="16px" />
+            }
+            else
+            {
+                <h2 style="font-size: 1.5rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-main); margin: 0;">
+                    Audit Logs
+                </h2>
+                <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0.25rem 0 0 0;">
+                    Track all system modifications and security events.
+                </p>
+            }
+        </div>
+    </div>
+
+    @if (_initialLoading)
+    {
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+            <MudCardContent Class="pa-4">
+                <div class="d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center mb-4 gap-3">
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="150px" Height="24px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Style="max-width: 300px;" Height="32px" Class="rounded-md" />
+                </div>
+
+                <div class="d-flex justify-space-between mb-3 border-b pb-2 desktop-skeleton gap-2">
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="120px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="80px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="70px" Height="20px" />
+                    <MudSkeleton SkeletonType="SkeletonType.Text" Width="60px" Height="20px" />
+                </div>
+
+                @for (int i = 0; i < 6; i++)
+                {
+                    <div class="d-flex justify-space-between align-center py-3 desktop-skeleton gap-4" style="border-bottom: 1px solid var(--border-color);">
+                        <div style="flex: 1;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="80%" Height="16px" /></div>
+                        <div style="flex: 1;"><MudSkeleton SkeletonType="SkeletonType.Text" Width="90%" Height="16px" /></div>
+                        <div style="flex: 1;"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="24px" Style="border-radius: 4px;" /></div>
+                        <div style="flex: 1; text-align: right;"><MudSkeleton SkeletonType="SkeletonType.Circle" Width="32px" Height="32px" Class="ml-auto" /></div>
+                    </div>
+
+                    <div class="d-flex flex-column py-3 mobile-skeleton gap-2" style="border-bottom: 1px solid var(--border-color);">
+                        <div class="d-flex justify-space-between align-center">
+                            <MudSkeleton SkeletonType="SkeletonType.Text" Width="140px" Height="16px" />
+                            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="80px" Height="24px" Style="border-radius: 4px;" />
+                        </div>
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Width="60%" Height="14px" />
+                        <div class="d-flex justify-space-between align-center mt-2">
+                            <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" Height="14px" />
+                            <MudSkeleton SkeletonType="SkeletonType.Circle" Width="32px" Height="32px" />
+                        </div>
+                    </div>
+                }
+
+                <div class="d-flex justify-center mt-4">
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Style="max-width: 250px;" Height="32px" Class="rounded-md" />
+                </div>
+            </MudCardContent>
+        </MudCard>
+    }
+    else
+    {
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card mb-6 shadcn-filter-panel">
+            <MudCardContent Class="pa-4">
+                <div class="d-flex align-center justify-space-between mb-4">
+                    <div class="d-flex align-center">
+                        <MudIcon Icon="@Icons.Material.Outlined.FilterList" Size="Size.Small" Class="mr-2 text-muted" />
+                        <span style="font-size: 0.875rem; font-weight: 600; color: var(--text-main);">Filters</span>
+                    </div>
+                    @if (HasActiveFilters())
+                    {
+                        <div class="d-flex align-center gap-2">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); background: var(--bg-muted); padding: 2px 8px; border-radius: 4px;">
+                                @GetActiveFilterCount() active
+                            </span>
+                            <MudButton Variant="Variant.Text"
+                                       Size="Size.Small"
+                                       OnClick="ClearAllFilters"
+                                       StartIcon="@Icons.Material.Outlined.Clear"
+                                       Style="color: var(--text-muted); text-transform: none; font-size: 0.75rem;">
+                                Clear All
+                            </MudButton>
+                        </div>
+                    }
+                </div>
+
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" md="3">
+                        <MudDateRangePicker Label="Date Range"
+                                            @bind-DateRange="dateRange"
+                                            Clearable="true"
+                                            AutoClose="true"
+                                            Variant="Variant.Outlined"
+                                            Margin="Margin.Dense" />
+                    </MudItem>
+
+                    <MudItem xs="12" md="3">
+                        <MudSelect T="string"
+                                   Label="Action Type"
+                                   @bind-Value="selectedActionType"
+                                   Clearable="true"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   AnchorOrigin="Origin.BottomCenter">
+                            <MudSelectItem T="string" Value="@("LOGIN")">Login</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("SECURITY")">Security/Auth</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("USER")">User Management</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("CUSTOMER")">Customer (AR)</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("VENDOR")">Vendor (AP)</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("ACCOUNT")">Accounts (GL)</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("BILL")">Bills/Expenses</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("INVOICE")">Invoices</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("JOURNAL")">Journal Entries</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    <MudItem xs="12" md="3">
+                        <MudAutocomplete T="string"
+                                         Label="User"
+                                         @bind-Value="selectedUser"
+                                         SearchFunc="SearchUsers"
+                                         Clearable="true"
+                                         Variant="Variant.Outlined"
+                                         Margin="Margin.Dense"
+                                         ResetValueOnEmptyText="true"
+                                         CoerceText="false"
+                                         DebounceInterval="300" />
+                    </MudItem>
+
+                    <MudItem xs="12" md="3">
+                        <MudTextField @bind-Value="searchString"
+                                      Label="Search"
+                                      Placeholder="Search keyword..."
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Outlined.Search"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Clearable="true" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        @if (FilteredLogs.Any() && HasActiveFilters())
+        {
+            <div style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                Showing <strong>@FilteredLogs.Count()</strong> of <strong>@auditLogs.Count</strong> total logs
+            </div>
+        }
+
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card">
+            <MudTable Items="@FilteredLogs" Dense="true" Hover="true" Bordered="false" Striped="false"
+                      Loading="@_loading" Elevation="0" Class="shadcn-table" Breakpoint="Breakpoint.Sm">
+                <HeaderContent>
+                    <MudTh><MudTableSortLabel SortBy="new Func<AuditLogDTO, object>(x => x.Timestamp)">Date & Time</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<AuditLogDTO, object>(x => x.UserEmail)">User</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<AuditLogDTO, object>(x => GetAuditCategory(x.Action))">Category</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<AuditLogDTO, object>(x => x.Action)">Action</MudTableSortLabel></MudTh>
+                    <MudTh Style="text-align:right">Details</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Date" Style="color: var(--text-muted); font-size: 0.875rem;">
+                        @context.Timestamp.ToLocalTime().ToString("MMM dd, yyyy HH:mm")
+                    </MudTd>
+                    <MudTd DataLabel="User">
+                        <span style="font-weight: 500; font-size: 0.875rem; color: @(context.UserEmail.Contains("System") ? "var(--text-muted)" : "var(--text-main)")">
+                            @context.UserEmail
+                        </span>
+                    </MudTd>
+                    <MudTd DataLabel="Category">
+                        <span class="shadcn-badge @(IsSecurityAction(context.Action) ? "badge-indigo" : "badge-slate")">@GetAuditCategory(context.Action)</span>
+                    </MudTd>
+                    <MudTd DataLabel="Action">
+                        <span class="shadcn-badge @GetActionBadgeClass(context.Action)">@context.Action</span>
+                    </MudTd>
+                    <MudTd DataLabel="Details" Style="text-align:right">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Visibility" Size="Size.Small" Class="shadcn-icon-btn" OnClick="@(async () => await ViewDetails(context))" />
+                    </MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager />
+                </PagerContent>
+                <NoRecordsContent>
+                    <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                        <MudIcon Icon="@Icons.Material.Outlined.SearchOff" Size="Size.Medium" Class="mb-2" />
+                        <div style="font-size: 0.875rem;">No audit logs found matching your criteria.</div>
+                    </div>
+                </NoRecordsContent>
+            </MudTable>
+        </MudCard>
+    }
+</MudContainer>
+
+@code {
+    private List<AuditLogDTO> auditLogs = new List<AuditLogDTO>();
+    private string searchString = "";
+    private bool _loading = true;
+    private bool _initialLoading = true;
+
+    // Filter properties
+    private DateRange? dateRange = null;
+    private string? selectedActionType = null;
+    private string? selectedUser = null;
+
+    // Computed property for filtered logs
+    private IEnumerable<AuditLogDTO> FilteredLogs => ApplyFilters();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogs();
+        _initialLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadLogs()
+    {
+        _loading = true;
+        try
+        {
+            auditLogs = await AuditService.GetAuditLogsAsync() ?? new List<AuditLogDTO>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load audit logs.");
+            Snackbar.Add("Failed to load logs. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // Apply all filters
+    private IEnumerable<AuditLogDTO> ApplyFilters()
+    {
+        var filtered = auditLogs.AsEnumerable();
+
+        // Date range filter
+        if (dateRange?.Start != null && dateRange?.End != null)
+        {
+            filtered = filtered.Where(log =>
+                log.Timestamp.Date >= dateRange.Start.Value.Date &&
+                log.Timestamp.Date <= dateRange.End.Value.Date);
+        }
+
+        // Action type filter
+        if (!string.IsNullOrWhiteSpace(selectedActionType))
+        {
+            if (selectedActionType == "LOGIN")
+                filtered = filtered.Where(log => log.Action.Contains("LOGIN", StringComparison.OrdinalIgnoreCase));
+            else if (selectedActionType == "SECURITY")
+                filtered = filtered.Where(log => IsSecurityAction(log.Action));
+            else if (selectedActionType == "USER")
+                filtered = filtered.Where(log => log.Action.StartsWith("USER-", StringComparison.OrdinalIgnoreCase));
+            else if (selectedActionType == "CUSTOMER")
+                filtered = filtered.Where(log => log.Action.StartsWith("CUSTOMER-", StringComparison.OrdinalIgnoreCase));
+            else if (selectedActionType == "VENDOR")
+                filtered = filtered.Where(log => log.Action.StartsWith("VENDOR-", StringComparison.OrdinalIgnoreCase));
+            else if (selectedActionType == "ACCOUNT")
+                filtered = filtered.Where(log => log.Action.StartsWith("ACCOUNT-", StringComparison.OrdinalIgnoreCase));
+            else if (selectedActionType == "BILL")
+                filtered = filtered.Where(log => log.Action.StartsWith("BILL-", StringComparison.OrdinalIgnoreCase));
+            else if (selectedActionType == "INVOICE")
+                filtered = filtered.Where(log => log.Action.StartsWith("INVOICE-", StringComparison.OrdinalIgnoreCase));
+            else if (selectedActionType == "JOURNAL")
+                filtered = filtered.Where(log => log.Action.Contains("JOURNAL", StringComparison.OrdinalIgnoreCase));
+            else
+                filtered = filtered.Where(log => log.Action.Equals(selectedActionType, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // User filter
+        if (!string.IsNullOrWhiteSpace(selectedUser))
+        {
+            filtered = filtered.Where(log => log.UserEmail.Equals(selectedUser, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Text search filter
+        if (!string.IsNullOrWhiteSpace(searchString))
+        {
+            filtered = filtered.Where(log =>
+                log.UserEmail.Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
+                log.Action.Contains(searchString, StringComparison.OrdinalIgnoreCase) ||
+                log.EntityName.Contains(searchString, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return filtered;
+    }
+
+    // User autocomplete search
+    private async Task<IEnumerable<string>> SearchUsers(string value, CancellationToken cancellationToken)
+    {
+        await Task.Delay(5, cancellationToken); // Small delay to simulate async
+
+        var uniqueUsers = auditLogs.Select(log => log.UserEmail).Distinct().OrderBy(u => u);
+
+        if (string.IsNullOrWhiteSpace(value))
+            return uniqueUsers;
+
+        return uniqueUsers.Where(u => u.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Check if any filters are active
+    private bool HasActiveFilters()
+    {
+        return dateRange != null ||
+               !string.IsNullOrWhiteSpace(selectedActionType) ||
+               !string.IsNullOrWhiteSpace(selectedUser) ||
+               !string.IsNullOrWhiteSpace(searchString);
+    }
+
+    // Get count of active filters
+    private int GetActiveFilterCount()
+    {
+        int count = 0;
+        if (dateRange != null) count++;
+        if (!string.IsNullOrWhiteSpace(selectedActionType)) count++;
+        if (!string.IsNullOrWhiteSpace(selectedUser)) count++;
+        if (!string.IsNullOrWhiteSpace(searchString)) count++;
+        return count;
+    }
+
+    // Clear all filters
+    private void ClearAllFilters()
+    {
+        dateRange = null;
+        selectedActionType = null;
+        selectedUser = null;
+        searchString = "";
+        StateHasChanged();
+    }
+
+    private async Task ViewDetails(AuditLogDTO log)
+    {
+        var parameters = new DialogParameters { ["Log"] = log };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        await DialogService.ShowAsync<AuditDetailsDialog>("Audit Log Details", parameters, options);
+    }
+
+    private static bool IsSecurityAction(string action)
+    {
+        return action.StartsWith("AUTH-", StringComparison.OrdinalIgnoreCase) ||
+               action.StartsWith("SECURITY-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetAuditCategory(string action) => IsSecurityAction(action) ? "Security" : "System";
+
+    // Returns custom CSS class instead of MudBlazor Material Colors
+    private string GetActionBadgeClass(string action)
+    {
+        if (IsSecurityAction(action)) return "badge-indigo";
+        if (action == "LOGIN") return "badge-slate";
+
+        if (action.StartsWith("USER-")) return "badge-purple";
+        if (action.StartsWith("CUSTOMER-")) return "badge-blue";
+        if (action.StartsWith("VENDOR-")) return "badge-orange";
+        if (action.StartsWith("ACCOUNT-")) return "badge-green";
+        if (action.StartsWith("BILL-")) return "badge-red";
+        if (action.StartsWith("INVOICE-")) return "badge-indigo";
+        if (action == "JOURNAL-ENTRY") return "badge-slate";
+
+        // Fallbacks for raw HTTP methods
+        return action switch
+        {
+            "POST" => "badge-green",
+            "PUT" => "badge-orange",
+            "DELETE" => "badge-red",
+            _ => "badge-slate"
+        };
+    }
+}

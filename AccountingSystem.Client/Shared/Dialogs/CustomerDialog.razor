@@ -1,0 +1,168 @@
+﻿@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using MudBlazor
+@using System.ComponentModel.DataAnnotations
+@inject ReceivableService ReceivableService
+@inject ISnackbar Snackbar
+@inject ILogger<CustomerDialog> Logger
+
+<MudDialog Class="shadcn-dialog">
+    <TitleContent>
+        <div class="d-flex align-center px-6 pt-6 pb-4">
+            <MudIcon Icon="@Icons.Material.Outlined.Person" Class="mr-2 text-muted" Size="Size.Small" />
+            <h3 style="font-size: 1.25rem; font-weight: 600; letter-spacing: -0.025em; color: var(--text-main); margin: 0;">
+                @(Customer?.Id > 0 ? "Edit Customer" : "Create New Customer")
+            </h3>
+        </div>
+    </TitleContent>
+
+    <DialogContent>
+        <div class="px-6 pb-2">
+            <MudForm @ref="form" @bind-IsValid="@success" Spacing="4">
+                <MudTextField T="string"
+                              Label="Customer Name"
+                              Required="true"
+                              RequiredError="Customer name is required"
+                              @bind-Value="model.Name"
+                              Immediate="true"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="shadcn-input"
+                              HelperText="Full name or business name of the customer" />
+
+                <MudTextField T="string"
+                              Label="Email"
+                              @bind-Value="model.Email"
+                              Validation="@(new EmailAddressAttribute())"
+                              Immediate="true"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Email"
+                              Margin="Margin.Dense"
+                              Class="shadcn-input"
+                              HelperText="Primary email address for communications" />
+
+                <MudTextField T="string"
+                              Label="Phone"
+                              @bind-Value="model.Phone"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Telephone"
+                              Margin="Margin.Dense"
+                              Class="shadcn-input"
+                              HelperText="Contact phone number" />
+            </MudForm>
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <div class="d-flex w-100 justify-end gap-2 px-6 py-4 mt-2">
+            <MudButton OnClick="Cancel"
+                       Variant="Variant.Outlined"
+                       Class="shadcn-btn-outline"
+                       Size="Size.Small">
+                Cancel
+            </MudButton>
+            <MudButton OnClick="Submit"
+                       Variant="Variant.Filled"
+                       Class="custom-button"
+                       Size="Size.Small"
+                       Disabled="isSubmitting"
+                       StartIcon="@(isSubmitting ? null : (Customer?.Id > 0 ? Icons.Material.Outlined.Save : Icons.Material.Outlined.Add))">
+                @if (isSubmitting)
+                {
+                    <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" Style="color: var(--bg-surface);" />
+                    @(Customer?.Id > 0 ? "Updating..." : "Creating...")
+                }
+                else
+                {
+                    @(Customer?.Id > 0 ? "Update" : "Create")
+                }
+            </MudButton>
+        </div>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    /* Clean up the default MudBlazor dialog padding so we can style the header/footer */
+    .shadcn-dialog .mud-dialog-title {
+        padding: 0;
+    }
+
+    .shadcn-dialog .mud-dialog-content {
+        padding: 0;
+    }
+
+    .shadcn-dialog .mud-dialog-actions {
+        padding: 0;
+    }
+</style>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public CustomerDTO? Customer { get; set; }
+
+    private CreateCustomerDTO model = new();
+    private bool success;
+    private bool isSubmitting;
+    private MudForm form = default!;
+
+    protected override void OnInitialized()
+    {
+        if (Customer != null)
+        {
+            model.Name = Customer.Name;
+            model.Email = Customer.Email;
+            model.Phone = Customer.Phone;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        await form.Validate();
+
+        if (!form.IsValid)
+        {
+            Snackbar.Add("Please correct the validation errors.", Severity.Warning);
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            if (Customer != null && Customer.Id > 0)
+            {
+                var updateDto = new UpdateCustomerDTO
+                {
+                    Id = Customer.Id,
+                    Name = model.Name,
+                    Email = model.Email,
+                    Phone = model.Phone
+                };
+
+                await ReceivableService.UpdateCustomerAsync(updateDto);
+                Snackbar.Add("Customer updated successfully!", Severity.Success);
+            }
+            else
+            {
+                await ReceivableService.CreateCustomerAsync(model);
+                Snackbar.Add("Customer created successfully!", Severity.Success);
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save customer.");
+            Snackbar.Add("Unable to save customer. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

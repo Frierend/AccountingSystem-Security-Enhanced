@@ -1,0 +1,107 @@
+﻿@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Dialogs
+@using MudBlazor
+@inject PayableService PayableService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject ILogger<VendorSelect> Logger
+
+<Microsoft.AspNetCore.Components.Authorization.AuthorizeView Roles="Admin,Accounting">
+    <MudAutocomplete T="VendorDTO"
+                     Label="Vendor"
+                     Value="_selectedVendor"
+                     ValueChanged="OnValueChanged"
+                     SearchFunc="@SearchVendors"
+                     ToStringFunc="@(v => v == null ? null : v.Name)"
+                     Adornment="Adornment.End"
+                     AdornmentIcon="@Icons.Material.Outlined.Add"
+                     OnAdornmentClick="OpenAddDialog"
+                     Variant="Variant.Outlined"
+                     Margin="Margin.Dense"
+                     Class="shadcn-input"
+                     Disabled="@(vendors == null)"
+                     Clearable="true"
+                     ResetValueOnEmptyText="true"
+                     CoerceText="true"
+                     CoerceValue="true"
+                     Placeholder="Search or add vendor..." />
+</Microsoft.AspNetCore.Components.Authorization.AuthorizeView>
+
+@code {
+    [Parameter] public int SelectedVendorId { get; set; }
+    [Parameter] public EventCallback<int> SelectedVendorIdChanged { get; set; }
+
+    private List<VendorDTO>? vendors = null;
+    private VendorDTO? _selectedVendor = null;
+
+    protected override async Task OnInitializedAsync() => await LoadVendors();
+
+    protected override void OnParametersSet()
+    {
+        // Sync the integer ID from parameter with the Object for Autocomplete
+        if (vendors != null)
+        {
+            if (SelectedVendorId == 0)
+            {
+                _selectedVendor = null;
+            }
+            else if (_selectedVendor?.Id != SelectedVendorId)
+            {
+                _selectedVendor = vendors.FirstOrDefault(v => v.Id == SelectedVendorId);
+            }
+        }
+    }
+
+    private async Task LoadVendors()
+    {
+        try
+        {
+            vendors = await PayableService.GetVendorsAsync();
+            // Sync initial state if parameter was passed before load
+            if (SelectedVendorId != 0 && vendors != null)
+            {
+                _selectedVendor = vendors.FirstOrDefault(v => v.Id == SelectedVendorId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load vendors for vendor selector.");
+        }
+    }
+
+    private async Task OnValueChanged(VendorDTO? value)
+    {
+        _selectedVendor = value;
+        SelectedVendorId = value?.Id ?? 0;
+        await SelectedVendorIdChanged.InvokeAsync(SelectedVendorId);
+    }
+
+    private Task<IEnumerable<VendorDTO>> SearchVendors(string value, CancellationToken token)
+    {
+        if (vendors == null) return Task.FromResult(Enumerable.Empty<VendorDTO>());
+
+        if (string.IsNullOrEmpty(value))
+            return Task.FromResult(vendors.AsEnumerable());
+
+        return Task.FromResult(vendors.Where(x =>
+            x.Name.Contains(value, StringComparison.InvariantCultureIgnoreCase)));
+    }
+
+    private async Task OpenAddDialog()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<VendorDialog>("Add New Vendor", options);
+
+        if (dialog != null)
+        {
+            var result = await dialog.Result;
+
+            if (result != null && !result.Canceled)
+            {
+                await LoadVendors();
+                Snackbar.Add("Vendor list refreshed.", Severity.Info);
+            }
+        }
+    }
+}

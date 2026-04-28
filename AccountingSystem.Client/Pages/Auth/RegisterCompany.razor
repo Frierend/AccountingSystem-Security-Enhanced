@@ -1,0 +1,715 @@
+﻿@page "/register"
+@layout LoginLayout
+@using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Shared.Validation
+@using AccountingSystem.Client.Services
+@using MudBlazor
+
+@inject AuthService AuthService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject ILogger<RegisterCompany> Logger
+
+<PageTitle>Register - AccSys</PageTitle>
+
+<div class="auth-page-wrapper">
+    <div class="auth-card shadcn-card">
+        
+        <div class="auth-header">
+            <div class="logo-wrap">
+                <div class="logo-skeleton @(logoLoaded ? "logo-skeleton--hidden" : "")"></div>
+                <img src="AccsysLogo.png"
+                     alt="AccSys Logo"
+                     class="form-logo @(logoLoaded ? "form-logo--visible" : "")"
+                     @onload="OnLogoLoaded" />
+            </div>
+            <h1 class="auth-title">Create Your Account</h1>
+            <p class="auth-subtitle">Start your accounting journey with us.</p>
+        </div>
+
+        <EditForm Model="@registerModel" OnValidSubmit="HandleRegistration">
+            <DataAnnotationsValidator />
+            
+            <div class="fields-group">
+                <div class="form-group">
+                    <label class="form-label">Company Name</label>
+                    <MudTextField @bind-Value="registerModel.CompanyName"
+                                  For="@(() => registerModel.CompanyName)"
+                                  Placeholder="Acme Corp"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  DisableUnderLine="true"
+                                  Class="shadcn-input-auth"
+                                  FullWidth="true" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Administrator Full Name</label>
+                    <MudTextField @bind-Value="registerModel.AdminFullName"
+                                  For="@(() => registerModel.AdminFullName)"
+                                  Placeholder="John Doe"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  DisableUnderLine="true"
+                                  Class="shadcn-input-auth"
+                                  FullWidth="true" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Email Address</label>
+                    <MudTextField @bind-Value="registerModel.AdminEmail"
+                                  For="@(() => registerModel.AdminEmail)"
+                                  Placeholder="admin@acme.com"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  DisableUnderLine="true"
+                                  Class="shadcn-input-auth"
+                                  FullWidth="true" />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <MudTextField @bind-Value="registerModel.Password"
+                                  For="@(() => registerModel.Password)"
+                                  Placeholder="Create a strong password"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  InputType="@passwordInputType"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@passwordInputIcon"
+                                  OnAdornmentClick="TogglePasswordVisibility"
+                                  AdornmentAriaLabel="Toggle password visibility"
+                                  DisableUnderLine="true"
+                                  Class="shadcn-input-auth"
+                                  FullWidth="true" />
+                    <div class="form-helper mt-1">@PasswordPolicy.Description</div>
+                </div>
+
+                <div class="recaptcha-wrap mt-4 mb-4">
+                    <div id="recaptcha_container"></div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="auth-alert alert-error mb-4">
+                        <MudIcon Icon="@Icons.Material.Outlined.ErrorOutline" Size="Size.Small" />
+                        <span>@errorMessage</span>
+                    </div>
+                }
+
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Class="shadcn-btn-primary"
+                           FullWidth="true"
+                           Disabled="@isLoading"
+                           Size="Size.Large">
+                    @if (isLoading)
+                    {
+                        <div class="d-flex align-center gap-2">
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ms-n1" />
+                            <span>Creating Company...</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <span>Create Company Account</span>
+                    }
+                </MudButton>
+            </div>
+        </EditForm>
+
+        <div class="auth-footer">
+            <MudDivider Class="mb-4" />
+            <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                Already have an account?
+                <MudLink Href="/" Class="shadcn-link ml-1">Sign In Here</MudLink>
+            </p>
+            <p style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">
+                By signing up, you agree to our 
+                <span class="tos-link" @onclick="OpenTermsModal">Terms of Service</span>
+            </p>
+        </div>
+    </div>
+</div>
+
+@if (showTermsModal)
+{
+    <div class="tos-backdrop" @onclick="CloseTermsModal">
+        <div class="tos-modal shadcn-card" @onclick:stopPropagation="true">
+            <div class="tos-header">
+                <div class="tos-header-left">
+                    <div class="tos-icon">
+                        <MudIcon Icon="@Icons.Material.Outlined.Gavel" Size="Size.Small" Style="color: var(--text-main);" />
+                    </div>
+                    <div>
+                        <h2 class="tos-title">Terms of Service</h2>
+                        <p class="tos-meta">AccSys Solutions &mdash; Effective upon registration</p>
+                    </div>
+                </div>
+                <button class="tos-close" @onclick="CloseTermsModal">
+                    <MudIcon Icon="@Icons.Material.Outlined.Close" Size="Size.Small" />
+                </button>
+            </div>
+
+            <div class="tos-notice">
+                <MudIcon Icon="@Icons.Material.Outlined.Info" Size="Size.Small" Class="tos-notice-icon" />
+                <p><strong>Academic Project Notice:</strong> AccSys is a student-developed system created as a requirement for <strong>IT15</strong> at the <strong>University of Mindanao</strong>. It is intended solely for academic demonstration purposes and does not constitute a commercial product or service.</p>
+            </div>
+
+            <div class="tos-body">
+                <div class="tos-section">
+                    <h3 class="tos-section-title"><span class="tos-section-num">1</span>Acceptance of Terms</h3>
+                    <p>By registering and using AccSys ("the System"), you confirm that you have read, understood, and agree to be bound by these Terms of Service. If you do not agree to these terms, please do not proceed with registration or use of the System.</p>
+                </div>
+                <div class="tos-section">
+                    <h3 class="tos-section-title"><span class="tos-section-num">2</span>Nature of the System</h3>
+                    <p>AccSys is an academic project developed in partial fulfillment of the requirements for the course <strong>IT15</strong> at the <strong>University of Mindanao</strong>. The system is a demonstration of accounting software capabilities including company registration, financial record management, and reporting features. It is <strong>not intended for actual commercial, legal, or financial use</strong>.</p>
+                </div>
+                <div class="tos-section">
+                    <h3 class="tos-section-title"><span class="tos-section-num">3</span>User Accounts &amp; Registration</h3>
+                    <p>When you register a company account, you agree to provide accurate and complete information. You are responsible for maintaining the confidentiality of your login credentials and for all activities that occur under your account. You must notify the system administrators immediately of any unauthorized use of your account.</p>
+                </div>
+                <div class="tos-section">
+                    <h3 class="tos-section-title"><span class="tos-section-num">4</span>Data &amp; Privacy</h3>
+                    <p>Any data entered into AccSys — including company names, financial records, and user information — is stored solely for demonstration and evaluation purposes within the scope of this academic project. We do not sell, share, or distribute your data to third parties. However, as this is an academic environment, absolute data security cannot be guaranteed. <strong>Do not enter real financial data, sensitive personal information, or confidential business records.</strong></p>
+                </div>
+                <div class="tos-section">
+                    <h3 class="tos-section-title"><span class="tos-section-num">5</span>Acceptable Use</h3>
+                    <p>You agree to use AccSys only for lawful purposes and in a manner consistent with the academic intent of the system. You must not:</p>
+                    <ul class="tos-list">
+                        <li>Attempt to gain unauthorized access to any part of the system</li>
+                        <li>Upload malicious code, scripts, or harmful content</li>
+                        <li>Use the system to conduct fraudulent or deceptive activities</li>
+                        <li>Interfere with the system's functionality or other users' access</li>
+                        <li>Reproduce, resell, or distribute the system without written permission from the developers</li>
+                    </ul>
+                </div>
+                <div class="tos-section">
+                    <h3 class="tos-section-title"><span class="tos-section-num">6</span>Intellectual Property</h3>
+                    <p>All source code, design assets, UI components, and system logic of AccSys are the intellectual property of the development team. This project was developed as part of the IT15 curriculum at the University of Mindanao. Unauthorized copying, redistribution, or commercial use of any part of the system is strictly prohibited.</p>
+                </div>
+                <div class="tos-section">
+                    <h3 class="tos-section-title"><span class="tos-section-num">7</span>Disclaimer of Warranties</h3>
+                    <p>AccSys is provided <strong>"as is"</strong> for academic evaluation purposes. The development team makes no warranties, express or implied, regarding the system's accuracy, completeness, reliability, or fitness for any particular purpose. The team shall not be liable for any damages arising from the use or inability to use the system.</p>
+                </div>
+            </div>
+
+            <div class="tos-footer">
+                <p class="tos-footer-note">Last updated for IT15 Academic Submission &mdash; University of Mindanao</p>
+                <MudButton Variant="Variant.Filled" Class="shadcn-btn-primary" OnClick="CloseTermsModal">
+                    I Understand &amp; Accept
+                </MudButton>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    /* ── Animations ───────────────────────────────────────────────── */
+    @@keyframes fadeUp {
+        from { opacity: 0; transform: translateY(18px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @@keyframes shimmer {
+        0% { background-position: -600px 0; }
+        100% { background-position: 600px 0; }
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @@keyframes slideUp {
+        from { opacity: 0; transform: translateY(24px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────── */
+    .auth-page-wrapper {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--bg-background);
+        padding: 2rem 1rem; /* Extra vertical padding for scrolling on small screens */
+    }
+
+    .auth-card {
+        width: 100%;
+        max-width: 440px; /* Slightly wider than login for the register fields */
+        padding: 2.5rem 2.5rem;
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+        animation: fadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    @@media (max-width: 640px) {
+        .auth-card {
+            padding: 2rem 1.5rem;
+        }
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    .auth-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    /* Logo */
+    .logo-wrap {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 1rem;
+        position: relative;
+        height: 50px;
+    }
+
+    .logo-skeleton {
+        position: absolute;
+        width: 120px;
+        height: 50px;
+        border-radius: var(--radius-md);
+        background: linear-gradient(90deg, var(--bg-muted) 25%, var(--border-color) 50%, var(--bg-muted) 75%);
+        background-size: 600px 100%;
+        animation: shimmer 1.4s infinite linear;
+        transition: opacity 0.35s ease;
+        z-index: 1;
+    }
+
+    .logo-skeleton--hidden { opacity: 0; pointer-events: none; }
+
+    .form-logo {
+        height: 50px;
+        width: auto;
+        transition: transform 0.3s ease, opacity 0.45s ease;
+        position: relative;
+        z-index: 2;
+        opacity: 0;
+    }
+
+    .form-logo--visible { opacity: 1; }
+    .form-logo:hover { transform: scale(1.05); }
+
+    /* Typography */
+    .auth-title {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin: 0 0 0.25rem 0;
+        letter-spacing: -0.025em;
+        color: var(--text-main);
+    }
+
+    .auth-subtitle {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        margin: 0;
+    }
+
+    /* ── Form Fields & Inputs ─────────────────────────────────────────────── */
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-main);
+        margin-bottom: 0.5rem;
+    }
+
+    .form-helper {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        line-height: 1.4;
+    }
+
+    .shadcn-input-auth {
+        background-color: var(--bg-surface);
+    }
+    
+    .shadcn-input-auth .mud-input-outlined-border {
+        border-color: var(--border-color) !important;
+        border-radius: var(--radius-md) !important;
+    }
+
+    .shadcn-input-auth.mud-input-outlined:focus-within .mud-input-outlined-border {
+        border-color: var(--text-main) !important;
+        border-width: 1px !important;
+        box-shadow: 0 0 0 2px var(--bg-background), 0 0 0 4px var(--text-main) !important;
+    }
+
+    /* ReCAPTCHA */
+    .recaptcha-wrap {
+        display: flex;
+        justify-content: center;
+        transform: scale(0.95);
+        transform-origin: center;
+    }
+
+    /* Alerts */
+    .auth-alert {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1.4;
+    }
+
+    .alert-error {
+        background-color: rgba(220, 38, 38, 0.1);
+        color: #dc2626;
+        border: 1px solid rgba(220, 38, 38, 0.2);
+    }
+
+    /* Buttons & Links */
+    .shadcn-btn-primary {
+        border-radius: var(--radius-md) !important;
+        text-transform: none !important;
+        font-weight: 500 !important;
+        background-color: var(--theme-primary) !important;
+        color: var(--bg-surface) !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+        transition: opacity 0.2s ease, transform 0.1s ease !important;
+    }
+
+    .shadcn-btn-primary:hover:not(:disabled) {
+        opacity: 0.9;
+        transform: translateY(-1px);
+    }
+
+    .shadcn-btn-primary:disabled {
+        opacity: 0.65 !important;
+    }
+
+    .shadcn-link {
+        color: var(--text-main) !important;
+        font-weight: 600 !important;
+        text-decoration: none !important;
+        transition: color 0.2s ease;
+    }
+
+    .shadcn-link:hover {
+        color: var(--text-muted) !important;
+        text-decoration: underline !important;
+    }
+
+    .auth-footer {
+        text-align: center;
+        margin-top: 2rem;
+    }
+
+    .tos-link {
+        color: var(--text-main);
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        transition: color 0.2s ease;
+    }
+
+    .tos-link:hover {
+        color: var(--text-muted);
+    }
+
+    /* ── Modal (Terms of Service) ────────────────────────────────── */
+    .tos-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.8); /* Dark slate with opacity */
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+        z-index: 99999; 
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        animation: fadeIn 0.2s ease both;
+    }
+
+    .tos-modal {
+        width: 100%;
+        max-width: 620px;
+        max-height: 88vh;
+        display: flex;
+        flex-direction: column;
+        animation: slideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+        overflow: hidden;
+        margin: auto;
+    }
+
+    .tos-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--bg-surface);
+        flex-shrink: 0;
+    }
+
+    .tos-header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .tos-icon {
+        width: 40px;
+        height: 40px;
+        background: var(--bg-muted);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .tos-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--text-main);
+        margin: 0;
+        letter-spacing: -0.025em;
+    }
+
+    .tos-meta {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin: 0;
+    }
+
+    .tos-close {
+        background: var(--bg-muted);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        color: var(--text-muted);
+        width: 34px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+    }
+
+    .tos-close:hover {
+        background: var(--border-color);
+        color: var(--text-main);
+    }
+
+    .tos-notice {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65rem;
+        background: #fffbeb;
+        border-bottom: 1px solid #fde68a;
+        padding: 1rem 1.5rem;
+        flex-shrink: 0;
+    }
+
+    .tos-notice-icon {
+        color: #d97706;
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+
+    .tos-notice p {
+        font-size: 0.875rem;
+        color: #92400e;
+        margin: 0;
+        line-height: 1.5;
+    }
+
+    .tos-body {
+        padding: 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+        scrollbar-width: thin;
+        scrollbar-color: var(--border-color) transparent;
+        background: var(--bg-surface);
+    }
+
+    .tos-body::-webkit-scrollbar { width: 6px; }
+    .tos-body::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 99px; }
+
+    .tos-section { margin-bottom: 1.5rem; }
+    .tos-section:last-child { margin-bottom: 0; }
+
+    .tos-section-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text-main);
+        margin: 0 0 0.5rem 0;
+    }
+
+    .tos-section-num {
+        width: 24px;
+        height: 24px;
+        background: var(--bg-muted);
+        color: var(--text-main);
+        border: 1px solid var(--border-color);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    .tos-section p {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        line-height: 1.6;
+        margin: 0;
+    }
+
+    .tos-list {
+        margin: 0.5rem 0 0 1rem;
+        padding: 0;
+        list-style: none;
+    }
+
+    .tos-list li {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        line-height: 1.6;
+        padding: 0.2rem 0 0.2rem 1rem;
+        position: relative;
+    }
+
+    .tos-list li::before {
+        content: "•";
+        position: absolute;
+        left: 0;
+        color: var(--text-main);
+        font-weight: 700;
+    }
+
+    .tos-footer {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        background: var(--bg-muted);
+        flex-shrink: 0;
+        flex-wrap: wrap;
+    }
+
+    .tos-footer-note {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-style: italic;
+        margin: 0;
+    }
+</style>
+
+@code {
+    private CompanyRegisterDTO registerModel = new CompanyRegisterDTO();
+    private bool isLoading = false;
+    private bool logoLoaded = false;
+    private bool showTermsModal = false;
+    private string errorMessage = "";
+
+    // Password visibility state
+    private bool isShowPassword = false;
+    private InputType passwordInputType = InputType.Password;
+    private string passwordInputIcon = Icons.Material.Outlined.VisibilityOff;
+
+    private const string SiteKey = "6LeREs0sAAAAALW-ePzb9R273YULYfKjGcg2SWr8";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Task.Delay(500);
+            var isCaptchaRendered = await JS.InvokeAsync<bool>("renderRecaptcha", "recaptcha_container", SiteKey);
+            if (!isCaptchaRendered)
+            {
+                errorMessage = "Security verification failed to load. Please refresh and try again.";
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void OnLogoLoaded()
+    {
+        logoLoaded = true;
+        StateHasChanged();
+    }
+
+    private void OpenTermsModal() => showTermsModal = true;
+    private void CloseTermsModal() => showTermsModal = false;
+
+    private void TogglePasswordVisibility()
+    {
+        isShowPassword = !isShowPassword;
+        passwordInputType = isShowPassword ? InputType.Text : InputType.Password;
+        passwordInputIcon = isShowPassword ? Icons.Material.Outlined.Visibility : Icons.Material.Outlined.VisibilityOff;
+    }
+
+    private async Task HandleRegistration()
+    {
+        isLoading = true;
+        errorMessage = "";
+        try
+        {
+            string token = await JS.InvokeAsync<string>("getCaptchaResponse");
+
+            if (string.IsNullOrEmpty(token))
+            {
+                errorMessage = "Please complete the CAPTCHA verification.";
+                await JS.InvokeVoidAsync("resetCaptcha");
+                return;
+            }
+
+            registerModel.RecaptchaToken = token;
+            var result = await AuthService.RegisterCompany(registerModel);
+
+            if (result.RequiresEmailConfirmation || string.IsNullOrWhiteSpace(result.Token))
+            {
+                Snackbar.Add(
+                    string.IsNullOrWhiteSpace(result.Message)
+                        ? "Registration successful. Please confirm your email before signing in."
+                        : result.Message,
+                    Severity.Success);
+                await Task.Delay(1200);
+                NavManager.NavigateTo($"/resend-confirmation?email={Uri.EscapeDataString(registerModel.AdminEmail)}");
+                return;
+            }
+
+            Snackbar.Add("Company registered successfully! Welcome.", Severity.Success);
+            await Task.Delay(1500);
+            NavManager.NavigateTo("/dashboard");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Company registration failed.");
+            errorMessage = string.IsNullOrWhiteSpace(ex.Message)
+                ? "Registration failed. Please try again."
+                : ex.Message;
+            await JS.InvokeVoidAsync("resetCaptcha");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

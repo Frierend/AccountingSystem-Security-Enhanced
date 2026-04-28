@@ -1,0 +1,412 @@
+﻿@inherits LayoutComponentBase
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Client.Shared.Components @using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@inject AuthService AuthService
+@inject NavigationManager NavManager
+@inject Blazored.LocalStorage.ILocalStorageService LocalStorage
+
+<MudThemeProvider Theme="_shadcnTheme" @bind-IsDarkMode="_isDarkMode" />
+
+<MudLayout Class="@(_isDarkMode ? "shadcn-layout dark-theme" : "shadcn-layout")">
+    <MudAppBar Class="shadcn-app-bar" Elevation="0">
+
+        <div class="app-bar-content">
+            <MudIconButton Icon="@Icons.Material.Outlined.Menu"
+                           Color="Color.Inherit"
+                           Edge="Edge.Start"
+                           Class="menu-toggle"
+                           OnClick="@((e) => DrawerToggle())" />
+
+            <div class="brand-section">
+                <img src="AccsysLogo.png" alt="AccSys Logo" class="app-logo" />
+                <div class="brand-text">
+                    <span class="app-title">AccSys</span>
+                    <AuthorizeView>
+                        <Authorized Context="authContext">
+                            <span class="company-name">
+                                @(authContext.User.FindFirst("CompanyName")?.Value ?? "Multi-Tenant Edition")
+                            </span>
+                        </Authorized>
+                    </AuthorizeView>
+                </div>
+            </div>
+
+            <MudSpacer />
+
+            <div class="mr-2">
+                <ThemeToggle IsDarkMode="_isDarkMode" IsDarkModeChanged="HandleThemeChange" />
+            </div>
+
+            <AuthorizeView>
+                <Authorized Context="authContext">
+                    <div class="user-section">
+                        <MudMenu AnchorOrigin="Origin.BottomRight"
+                                 TransformOrigin="Origin.TopRight"
+                                 Class="user-menu"
+                                 ListClass="shadcn-menu-list">
+                            <ActivatorContent>
+                                <MudButton Variant="Variant.Text"
+                                           Class="user-ghost-button"
+                                           EndIcon="@Icons.Material.Outlined.ExpandMore">
+                                    <div class="user-info">
+                                        <MudAvatar Class="user-avatar" Size="Size.Small">
+                                            <MudIcon Icon="@Icons.Material.Outlined.Person" Size="Size.Small" />
+                                        </MudAvatar>
+                                        <span class="user-name">
+                                            @(authContext.User.FindFirst("FullName")?.Value ?? authContext.User.Identity?.Name)
+                                        </span>
+                                    </div>
+                                </MudButton>
+                            </ActivatorContent>
+                            <ChildContent>
+                                <div class="user-menu-content">
+                                    <div class="menu-header">
+                                        <div class="menu-header-title">My Account</div>
+                                    </div>
+                                    <MudDivider Class="my-1" />
+                                    <MudMenuItem Href="/profile"
+                                                 Icon="@Icons.Material.Outlined.AccountCircle"
+                                                 Class="shadcn-menu-item">
+                                        Profile
+                                    </MudMenuItem>
+                                    <MudDivider Class="my-1" />
+                                    <MudMenuItem OnClick="Logout"
+                                                 Icon="@Icons.Material.Outlined.Logout"
+                                                 Class="shadcn-menu-item logout-item">
+                                        Log out
+                                    </MudMenuItem>
+                                </div>
+                            </ChildContent>
+                        </MudMenu>
+                    </div>
+                </Authorized>
+                <NotAuthorized>
+                    <div class="auth-buttons">
+                        <MudButton Variant="Variant.Text"
+                                   Class="shadcn-btn-ghost"
+                                   Href="/login">
+                            Log in
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled"
+                                   Class="shadcn-btn-primary"
+                                   Href="/register">
+                            Register
+                        </MudButton>
+                    </div>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen"
+               ClipMode="DrawerClipMode.Always"
+               Class="shadcn-drawer"
+               Elevation="0">
+        <div class="drawer-content">
+            <NavMenu />
+        </div>
+    </MudDrawer>
+
+    <MudMainContent Class="shadcn-main-content">
+        <div class="page-wrapper">
+            @Body
+        </div>
+    </MudMainContent>
+</MudLayout>
+
+<style>
+    /* Main Layout */
+    .shadcn-layout {
+        min-height: 100vh;
+        background-color: var(--bg-background);
+        color: var(--text-main);
+    }
+
+    /* Flat, bordered App Bar */
+    .shadcn-app-bar {
+        background-color: var(--bg-surface) !important;
+        color: var(--text-main) !important;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .app-bar-content {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        padding: 0 1.5rem;
+        height: 64px;
+    }
+
+    /* Flat ghost button for menu toggle */
+    .menu-toggle {
+        margin-right: 1rem;
+        border-radius: var(--radius-md) !important;
+        color: var(--text-muted) !important;
+        transition: background-color 0.15s ease !important;
+    }
+
+        .menu-toggle:hover {
+            background-color: var(--bg-muted) !important;
+            color: var(--text-main) !important;
+        }
+
+    /* Brand Section */
+    .brand-section {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .app-logo {
+        height: 28px;
+        width: auto;
+    }
+
+    .brand-text {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .app-title {
+        font-weight: 600;
+        font-size: 1.1rem;
+        letter-spacing: -0.025em;
+        line-height: 1.1;
+        color: var(--text-main);
+    }
+
+    .company-name {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--text-muted);
+    }
+
+    /* User Section (Ghost Button style) */
+    .user-ghost-button {
+        padding: 6px 12px !important;
+        border-radius: var(--radius-md) !important;
+        color: var(--text-main) !important;
+        transition: background-color 0.15s ease !important;
+        text-transform: none !important;
+        font-weight: 500 !important;
+    }
+
+        .user-ghost-button:hover {
+            background-color: var(--bg-muted) !important;
+        }
+
+    .user-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .user-avatar {
+        background-color: var(--bg-muted) !important;
+        color: var(--text-main) !important;
+        border: 1px solid var(--border-color);
+        width: 28px !important;
+        height: 28px !important;
+    }
+
+    .user-name {
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+
+    /* Dropdown Menu */
+    .user-menu-content {
+        min-width: 220px;
+        padding: 4px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        background-color: var(--bg-surface);
+    }
+
+    .shadcn-menu-list {
+        padding: 0 !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+        border-radius: var(--radius-md) !important;
+    }
+
+    .menu-header {
+        padding: 8px 12px;
+    }
+
+    .menu-header-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-main);
+    }
+
+    .shadcn-menu-item {
+        border-radius: 4px !important;
+        font-size: 0.875rem !important;
+        padding: 8px 12px !important;
+        margin: 2px 4px !important;
+        color: var(--text-main) !important;
+        transition: background-color 0.1s ease !important;
+    }
+
+        .shadcn-menu-item:hover {
+            background-color: var(--bg-muted) !important;
+        }
+
+    .logout-item:hover {
+        background-color: #fef2f2 !important;
+        color: var(--color-destructive) !important;
+    }
+
+    /* Auth Buttons */
+    .auth-buttons {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .shadcn-btn-ghost {
+        border-radius: var(--radius-md) !important;
+        text-transform: none !important;
+        font-weight: 500 !important;
+        color: var(--text-main) !important;
+    }
+
+        .shadcn-btn-ghost:hover {
+            background-color: var(--bg-muted) !important;
+        }
+
+    .shadcn-btn-primary {
+        border-radius: var(--radius-md) !important;
+        text-transform: none !important;
+        font-weight: 500 !important;
+        background-color: var(--text-main) !important;
+        color: var(--bg-surface) !important;
+        box-shadow: none !important;
+        padding: 6px 16px !important;
+    }
+
+        .shadcn-btn-primary:hover {
+            opacity: 0.9;
+        }
+
+    /* Navigation Drawer */
+    .shadcn-drawer {
+        background-color: var(--bg-surface) !important;
+        border-right: 1px solid var(--border-color) !important;
+    }
+
+    .drawer-content {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Main Content */
+    .shadcn-main-content {
+        min-height: calc(100vh - 64px);
+    }
+
+    .page-wrapper {
+        padding: 1.5rem;
+        min-height: 100%;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    /* Fixed Media Queries */
+    @@media (max-width: 768px) {
+        .user-name {
+            display: none;
+        }
+
+        .page-wrapper {
+            padding: 1rem;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .app-bar-content {
+            padding: 0 0.75rem;
+        }
+
+        .company-name {
+            display: none;
+        }
+    }
+</style>
+
+@code {
+    bool _drawerOpen = true;
+    bool _isDarkMode = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Check if there's a saved preference
+            var savedTheme = await LocalStorage.GetItemAsync<bool?>("isDarkMode");
+            if (savedTheme.HasValue)
+            {
+                _isDarkMode = savedTheme.Value;
+                StateHasChanged(); 
+            }
+        }
+    }
+
+
+    private async Task HandleThemeChange(bool isDark)
+    {
+        _isDarkMode = isDark;
+        await LocalStorage.SetItemAsync("isDarkMode", _isDarkMode);
+    }
+
+    void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    private async Task Logout()
+    {
+        await AuthService.Logout();
+        NavManager.NavigateTo("/");
+    }
+
+    private MudTheme _shadcnTheme = new MudTheme()
+    {
+        PaletteLight = new PaletteLight()
+        {
+            Primary = "#0f172a", // slate-900
+            Secondary = "#64748b", // slate-500
+            AppbarBackground = "#ffffff",
+            AppbarText = "#0f172a",
+            Background = "#f8fafc", // slate-50
+            Surface = "#ffffff",
+            DrawerBackground = "#ffffff",
+            DrawerText = "#0f172a",
+            ActionDefault = "#64748b",
+            TextPrimary = "#0f172a",
+            TextSecondary = "#64748b",
+            LinesDefault = "#e2e8f0", // slate-200
+            Divider = "#e2e8f0"
+        },
+        PaletteDark = new PaletteDark()
+        {
+            Primary = "#f8fafc", // slate-50
+            Secondary = "#94a3b8", // slate-400
+            AppbarBackground = "#0f172a", // slate-900
+            AppbarText = "#f8fafc",
+            Background = "#020817", // slate-950
+            Surface = "#0f172a", // slate-900
+            DrawerBackground = "#0f172a", // slate-900
+            DrawerText = "#f8fafc",
+            ActionDefault = "#94a3b8",
+            TextPrimary = "#f8fafc",
+            TextSecondary = "#94a3b8",
+            LinesDefault = "#1e293b", // slate-800
+            Divider = "#1e293b",
+        }
+    };
+
+}

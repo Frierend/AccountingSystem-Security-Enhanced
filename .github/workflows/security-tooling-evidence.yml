@@ -1,0 +1,84 @@
+name: Security Tooling Evidence
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build_and_test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore AccountingSystem.sln
+
+      - name: Build
+        run: dotnet build AccountingSystem.sln --configuration Release --no-restore
+
+      - name: Run API tests
+        run: dotnet test AccountingSystem.API.Tests/AccountingSystem.API.Tests.csproj --configuration Release --no-build
+
+      - name: Run Client tests
+        run: dotnet test AccountingSystem.Client.Tests/AccountingSystem.Client.Tests.csproj --configuration Release --no-build
+
+  dependency_vulnerability_report:
+    name: Dependency Vulnerability Report (Evidence)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Generate vulnerability report (non-blocking)
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet list AccountingSystem.sln package --vulnerable --include-transitive | tee dependency-vulnerability-report.txt || true
+
+      - name: Upload vulnerability report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-vulnerability-report
+          path: dependency-vulnerability-report.txt
+          if-no-files-found: error
+
+  secret_scan_evidence:
+    name: Secret Scan Evidence (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run gitleaks (non-blocking evidence mode)
+        continue-on-error: true
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload gitleaks artifact (if present)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: |
+            results.sarif
+            gitleaks-report.json
+          if-no-files-found: ignore
