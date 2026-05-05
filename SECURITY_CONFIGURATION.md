@@ -78,6 +78,13 @@ The project policy is:
 
 `BootstrapAdmin__*` values are required when creating the first super-admin account in an uninitialized environment.
 
+## Security Control Notes
+
+- Registration reCAPTCHA is implemented through Google reCAPTCHA v2 Checkbox.
+- Login reCAPTCHA is always shown on the login page and required server-side for every non-locked login attempt.
+- Account lockout still applies after the configured failed attempts, with a 5-minute demo/presentation lockout in the current configuration.
+- Authenticator App MFA and Email OTP MFA are optional and independently managed from the user profile.
+
 ## Local Development Setup
 
 ### Recommended approach
@@ -134,6 +141,7 @@ For this academic project, payment integration is documented and tested in **Pay
   - reCAPTCHA secret keys
   - PayMongo secret keys
   - bootstrap admin initial passwords
+  - OTP values, recovery codes, CAPTCHA tokens, or JWTs
 
 ## Known Limitations and Recommended Improvements
 

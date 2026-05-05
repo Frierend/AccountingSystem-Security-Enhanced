@@ -2,7 +2,7 @@
 
 ## Summary
 
-Phase 8 adds optional MFA using Authenticator App TOTP, Email OTP, and recovery codes while keeping the existing JWT-based API/client architecture.
+Phase 8 adds optional MFA using independently managed Authenticator App TOTP, Email OTP, and recovery codes while keeping the existing JWT-based API/client architecture.
 
 Supported authenticator apps:
 - Google Authenticator
@@ -15,6 +15,7 @@ Supported email factor:
 
 - **Implemented:** TOTP authenticator setup, MFA login challenge flow, and recovery-code support.
 - **Implemented:** Email OTP MFA setup, login challenge, resend cooldown, verification attempts, and disable flow.
+- **Implemented:** Authenticator App MFA and Email OTP MFA can be enabled or disabled independently from the profile.
 - **Known Limitation:** SMS OTP and push MFA are not implemented.
 - **Known Limitation:** Email OTP challenges are stored in memory for demo use; pending codes are lost if the API restarts.
 - **Known Limitation:** remember-device / remember-browser trust flow is not implemented.
@@ -83,10 +84,10 @@ Sensitive actions require exactly one re-authentication factor:
 
 ## Recovery Codes
 
-- Recovery codes are generated when MFA is first enabled.
+- Recovery codes are generated when Authenticator App MFA is first enabled.
 - Regenerating recovery codes replaces the previous usable set.
 - Recovery codes are single-use.
-- Recovery-code login works only while MFA is enabled.
+- Recovery-code login works only while Authenticator App MFA is enabled and valid recovery codes remain.
 - The UI shows recovery codes only immediately after enable/regeneration.
 
 ## Email OTP Security
@@ -138,8 +139,10 @@ Rate-limit configuration was added for:
 
 - TOTP codes are verified through ASP.NET Core Identity and are never stored.
 - Recovery codes are managed through Identity and are invalidated on use.
-- Secrets, QR URIs, TOTP codes, Email OTP codes, and recovery codes are not written to audit logs.
+- Secrets, QR URIs, TOTP codes, Email OTP codes, recovery codes, CAPTCHA tokens, JWTs, and passwords are not written to audit logs.
 - If both Authenticator App MFA and Email OTP MFA are enabled, the login challenge prioritizes the authenticator app and offers Email OTP as a backup option.
+- If only Email OTP MFA is enabled, login uses Email OTP without requiring Authenticator App MFA.
+- Disabling Authenticator App MFA does not disable Email OTP MFA, and disabling Email OTP MFA does not disable Authenticator App MFA.
 - SuperAdmin has no MFA exemption in this phase. If MFA is enabled on the account, the second step is required.
 - **Known Limitation:** MFA is currently optional and policy-based enforcement is not yet implemented across all role scenarios.
 - **Recommended Improvement:** add administrative reporting dashboards for MFA enrollment and recovery-code events.

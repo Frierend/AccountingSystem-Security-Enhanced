@@ -18,6 +18,8 @@ namespace AccountingSystem.API.Services.Interfaces
 
         Task DisableAsync(int legacyUserId, MfaReauthenticationDTO dto);
 
+        Task<bool> IsAuthenticatorAppEnabledAsync(ApplicationUser identityUser);
+
         Task<bool> IsEmailOtpEnabledAsync(ApplicationUser identityUser);
 
         Task SendEmailOtpSetupCodeAsync(int legacyUserId);

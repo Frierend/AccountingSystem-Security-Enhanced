@@ -46,9 +46,8 @@ namespace AccountingSystem.API.Services
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Console.WriteLine($"Captcha Verification Failed: {ex.Message}");
                 return false;
             }
         }

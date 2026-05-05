@@ -10,18 +10,21 @@ The following controls are implemented in the current codebase:
 4. JWT validation settings with explicit issuer, audience, signing key, expiry, and configurable clock skew.
 5. Auth security event logging through dedicated service-level audit writes.
 6. Sanitized non-auth request logging in middleware for state-changing operations.
-7. Optional Authenticator App MFA, Email OTP MFA, and recovery codes.
+7. Optional independently managed Authenticator App MFA, Email OTP MFA, and recovery codes.
 8. PayMongo webhook HMAC signature validation with replay-window checking.
-9. CI security-tooling evidence via GitHub Actions:
+9. Google reCAPTCHA v2 Checkbox for registration and every normal login attempt.
+10. CI security-tooling evidence via GitHub Actions:
    - `.github/workflows/security-tooling-evidence.yml` (build/test, dependency vulnerability report artifact, gitleaks report-first secret scan)
    - `.github/workflows/codeql.yml` (CodeQL static analysis for C#)
 
 ## Logging and Monitoring Policy
 
 - Tenant-level business mutation events are captured in `AuditLogs`.
+- Tenant audit logs display System and Security categories.
 - Auth and account-security events are captured through `AuthSecurityAuditService`.
 - Super-admin governance actions are captured in `SuperAdminAuditLogs`.
 - SuperAdmin-account login failures, lockouts, CAPTCHA-required events, MFA challenges, and successful logins are mirrored into `SuperAdminAuditLogs`.
+- OTP values, recovery codes, CAPTCHA tokens, passwords, JWTs, and secrets are not written to audit details.
 - Development email fallback logs reset/confirmation links when SMTP is not configured.
 
 ## Incident Response Plan
@@ -75,5 +78,7 @@ The following controls are implemented in the current codebase:
 - [x] Tenant and super-admin audit logging
 - [x] SuperAdmin-account auth event mirroring
 - [x] JWT validation configuration and middleware path
+- [x] Registration and always-on login reCAPTCHA
+- [x] Independent Authenticator App and Email OTP MFA management
 - [x] CI security tooling evidence (build/test, dependency scan report, secret scan evidence, CodeQL)
 - [x] PayMongo webhook signature verification hardening

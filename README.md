@@ -22,7 +22,7 @@
 - Role-based UI and API access control.
 - Audit log visibility for tenant and super-admin actions.
 - PayMongo payment source and redirect flow (test-mode usage for local/academic demonstration).
-- Registration flow protected by Google reCAPTCHA v2 Checkbox.
+- Registration and login flows protected by Google reCAPTCHA v2 Checkbox.
 - Password reset and email confirmation flows through SMTP.
 
 ## System Architecture
@@ -42,7 +42,7 @@
 - SMTP email delivery (`SmtpClient`) with Gmail App Password compatible configuration
 
 #### Integrations
-- Google reCAPTCHA v2 Checkbox (registration)
+- Google reCAPTCHA v2 Checkbox (registration and every login attempt)
 - PayMongo API (test mode for project demonstration)
 - QuestPDF for reporting
 - World Bank and Frankfurter APIs for economic/rate data
@@ -58,21 +58,22 @@
 - Login protection defaults:
   - lockout after 5 failed attempts
   - temporary demo lockout duration: 5 minutes
-  - adaptive login reCAPTCHA after repeated failed attempts
+  - login reCAPTCHA is always shown and required before credential processing
   - endpoint-specific rate limiting on auth routes.
 - Optional MFA:
   - Authenticator App MFA with recovery codes
   - Email OTP MFA to a confirmed email address
+  - Authenticator App MFA and Email OTP MFA are independently managed from the user profile
 - Tenant isolation through middleware and EF Core query filters.
-- Audit logging through `AuditMiddleware` plus dedicated auth security events, including mirrored SuperAdmin-account auth events in governance logs.
+- Audit logging through `AuditMiddleware` plus dedicated auth security events; tenant audit logs show System and Security categories, and SuperAdmin-account auth events are mirrored in governance logs.
 
 ## Security Policy Snapshot
 
 - **Secure configuration policy**: runtime secrets are expected from environment variables or `.env` in local development. Checked-in `appsettings.json` uses placeholders (`__SET_VIA_ENV__`) for sensitive values.
 - **Authentication policy**: login, forgot password, reset password, email confirmation, resend confirmation, optional Authenticator App MFA, optional Email OTP MFA, and recovery codes are implemented.
 - **Authorization policy**: roles include `Admin`, `Accounting`, `Management`, and `SuperAdmin`; protected pages and API endpoints enforce role checks.
-- **Data handling policy**: passwords are not stored in plaintext; EF Core is used for database access; HTTPS redirection is enabled in API startup.
-- **Monitoring policy**: security-relevant events are logged through audit tables and auth-security audit events.
+- **Data handling policy**: passwords are not stored in plaintext; OTP values, recovery codes, CAPTCHA tokens, JWTs, and secrets are not logged; EF Core is used for database access; HTTPS redirection is enabled in API startup.
+- **Monitoring policy**: security-relevant events are logged through tenant audit logs and SuperAdmin governance logs, including SuperAdmin-account auth/security events.
 
 ## Code Auditing Tooling Evidence (CI)
 

@@ -212,7 +212,7 @@
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel="Date" Style="color: var(--text-muted); font-size: 0.875rem;">
-                        @context.Timestamp.ToLocalTime().ToString("MMM dd, yyyy HH:mm")
+                        @AuditTimestampFormatter.FormatLocalDateTime(context.Timestamp)
                     </MudTd>
                     <MudTd DataLabel="User">
                         <span style="font-weight: 500; font-size: 0.875rem; color: @(context.UserEmail.Contains("System") ? "var(--text-muted)" : "var(--text-main)")">

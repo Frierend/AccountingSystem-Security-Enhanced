@@ -162,7 +162,8 @@ public class AuthServiceTests
         var response = await service.LoginAsync(new LoginDTO
         {
             Email = "admin@contoso.com",
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         response.Token.Should().NotBeNullOrWhiteSpace();
@@ -180,7 +181,7 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task LoginAsync_WhenFailedAttemptsAreBelowCaptchaThreshold_ShouldNotVerifyCaptcha()
+    public async Task LoginAsync_WhenCaptchaTokenIsValid_ShouldVerifyCaptchaFromFirstAttempt()
     {
         var context = TestHelpers.CreateContext(tenantId: 101);
         using var harness = TestHelpers.CreateIdentityHarness();
@@ -192,20 +193,20 @@ public class AuthServiceTests
             harness,
             companyId: 101,
             email: "captcha-below@test.com");
-        await TestHelpers.SetIdentityFailedAttemptsAsync(harness, user.Id, failedAttempts: 2);
 
         var response = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         response.Token.Should().NotBeNullOrWhiteSpace();
-        captcha.Verify(x => x.VerifyTokenAsync(It.IsAny<string>()), Times.Never);
+        captcha.Verify(x => x.VerifyTokenAsync("good-token"), Times.Once);
     }
 
     [Fact]
-    public async Task LoginAsync_WhenWrongPasswordBelowCaptchaThreshold_ShouldIncrementFailureWithoutCaptcha()
+    public async Task LoginAsync_WhenWrongPasswordAndCaptchaValid_ShouldIncrementFailure()
     {
         var context = TestHelpers.CreateContext(tenantId: 102);
         using var harness = TestHelpers.CreateIdentityHarness();
@@ -217,24 +218,24 @@ public class AuthServiceTests
             harness,
             companyId: 102,
             email: "captcha-below-fail@test.com");
-        await TestHelpers.SetIdentityFailedAttemptsAsync(harness, user.Id, failedAttempts: 2);
 
         var exception = await Record.ExceptionAsync(() => service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "WrongPassword123!"
+            Password = "WrongPassword123!",
+            RecaptchaToken = "good-token"
         }));
 
         exception.Should().NotBeNull();
         exception!.Message.Should().Be("Invalid email or password. Please try again later.");
-        captcha.Verify(x => x.VerifyTokenAsync(It.IsAny<string>()), Times.Never);
+        captcha.Verify(x => x.VerifyTokenAsync("good-token"), Times.Once);
 
         var identityUser = await harness.IdentityContext.Users.SingleAsync(u => u.LegacyUserId == user.Id);
-        identityUser.AccessFailedCount.Should().Be(3);
+        identityUser.AccessFailedCount.Should().Be(1);
     }
 
     [Fact]
-    public async Task LoginAsync_WhenCaptchaThresholdReachedAndTokenMissing_ShouldRejectWithoutIncrementingFailures()
+    public async Task LoginAsync_WhenCaptchaTokenMissing_ShouldRejectWithoutIncrementingFailures()
     {
         var context = TestHelpers.CreateContext(tenantId: 103);
         using var harness = TestHelpers.CreateIdentityHarness();
@@ -247,7 +248,6 @@ public class AuthServiceTests
             harness,
             companyId: 103,
             email: "captcha-missing@test.com");
-        await TestHelpers.SetIdentityFailedAttemptsAsync(harness, user.Id, failedAttempts: 3);
 
         var exception = await Record.ExceptionAsync(() => service.LoginAsync(new LoginDTO
         {
@@ -260,14 +260,14 @@ public class AuthServiceTests
         captcha.Verify(x => x.VerifyTokenAsync(It.IsAny<string>()), Times.Never);
 
         var identityUser = await harness.IdentityContext.Users.SingleAsync(u => u.LegacyUserId == user.Id);
-        identityUser.AccessFailedCount.Should().Be(3);
+        identityUser.AccessFailedCount.Should().Be(0);
         audit.Verify(x => x.WriteAsync(
             "AUTH-LOGIN-CAPTCHA-REQUIRED",
             user.Id,
             company.Id,
             user.Email,
-            "FailedAttemptThresholdReached",
-            3,
+            "AlwaysRequired",
+            0,
             It.IsAny<DateTime?>(),
             "LoginCaptcha"), Times.Once);
         audit.Verify(x => x.WriteAsync(
@@ -276,13 +276,13 @@ public class AuthServiceTests
             company.Id,
             user.Email,
             "MissingToken",
-            3,
+            0,
             It.IsAny<DateTime?>(),
             "LoginCaptcha"), Times.Once);
     }
 
     [Fact]
-    public async Task LoginAsync_WhenCaptchaThresholdReachedAndTokenInvalid_ShouldRejectWithoutIncrementingFailures()
+    public async Task LoginAsync_WhenCaptchaTokenInvalid_ShouldRejectWithoutIncrementingFailures()
     {
         var context = TestHelpers.CreateContext(tenantId: 104);
         using var harness = TestHelpers.CreateIdentityHarness();
@@ -295,7 +295,6 @@ public class AuthServiceTests
             harness,
             companyId: 104,
             email: "captcha-invalid@test.com");
-        await TestHelpers.SetIdentityFailedAttemptsAsync(harness, user.Id, failedAttempts: 3);
 
         var exception = await Record.ExceptionAsync(() => service.LoginAsync(new LoginDTO
         {
@@ -309,11 +308,11 @@ public class AuthServiceTests
         captcha.Verify(x => x.VerifyTokenAsync("bad-token"), Times.Once);
 
         var identityUser = await harness.IdentityContext.Users.SingleAsync(u => u.LegacyUserId == user.Id);
-        identityUser.AccessFailedCount.Should().Be(3);
+        identityUser.AccessFailedCount.Should().Be(0);
     }
 
     [Fact]
-    public async Task LoginAsync_WhenCaptchaThresholdReachedAndTokenValid_ShouldContinueCredentialProcessing()
+    public async Task LoginAsync_WhenCaptchaTokenValid_ShouldContinueCredentialProcessing()
     {
         var context = TestHelpers.CreateContext(tenantId: 105);
         using var harness = TestHelpers.CreateIdentityHarness();
@@ -437,7 +436,8 @@ public class AuthServiceTests
         var act = async () => await service.LoginAsync(new LoginDTO
         {
             Email = "hydrate@test.com",
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var exception = await Record.ExceptionAsync(act);
@@ -520,7 +520,6 @@ public class AuthServiceTests
                 ["JwtSettings:ClockSkewSeconds"] = "60",
                 ["AuthSecurity:Lockout:MaxFailedAccessAttempts"] = "5",
                 ["AuthSecurity:Lockout:LockoutMinutes"] = "5",
-                ["AuthSecurity:LoginCaptcha:FailedAttemptThreshold"] = "3",
                 ["IdentityTokens:PasswordResetTokenLifespanMinutes"] = "120",
                 ["IdentityTokens:EmailConfirmationTokenLifespanMinutes"] = "1440",
                 ["AppUrls:ClientBaseUrl"] = "https://localhost:5173"
@@ -690,7 +689,8 @@ public class AuthServiceTests
         var response = await controller.Login(new LoginDTO
         {
             Email = "confirm@test.com",
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var unauthorized = response.Should().BeOfType<UnauthorizedObjectResult>().Subject;
@@ -722,7 +722,8 @@ public class AuthServiceTests
         var response = await controller.Login(new LoginDTO
         {
             Email = "blanket@test.com",
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var unauthorized = response.Should().BeOfType<UnauthorizedObjectResult>().Subject;
@@ -752,7 +753,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = "superadmin@test.com",
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         loginResponse.Token.Should().NotBeNullOrWhiteSpace();
@@ -795,7 +797,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = identityUser.Email!,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         loginResponse.Token.Should().NotBeNullOrWhiteSpace();
@@ -903,7 +906,8 @@ public class AuthServiceTests
         var act = async () => await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "BetterPassword456!"
+            Password = "BetterPassword456!",
+            RecaptchaToken = "good-token"
         });
 
         var exception = await Record.ExceptionAsync(act);
@@ -927,7 +931,6 @@ public class AuthServiceTests
                 ["JwtSettings:ClockSkewSeconds"] = "60",
                 ["AuthSecurity:Lockout:MaxFailedAccessAttempts"] = "5",
                 ["AuthSecurity:Lockout:LockoutMinutes"] = "5",
-                ["AuthSecurity:LoginCaptcha:FailedAttemptThreshold"] = "3",
                 ["IdentityTokens:PasswordResetTokenLifespanMinutes"] = "120",
                 ["IdentityTokens:EmailConfirmationTokenLifespanMinutes"] = "1440",
                 ["AppUrls:ClientBaseUrl"] = "https://localhost:5173"
@@ -1018,7 +1021,8 @@ public class AuthServiceTests
         var response = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         response.RequiresTwoFactor.Should().BeTrue();
@@ -1056,7 +1060,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var mfaResponse = await service.CompleteMfaLoginAsync(new LoginMfaDTO
@@ -1100,7 +1105,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var identityUser = await harness.IdentityContext.Users.SingleAsync(u => u.LegacyUserId == user.Id);
@@ -1147,7 +1153,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var successResponse = await service.CompleteMfaLoginAsync(new LoginMfaDTO
@@ -1161,7 +1168,8 @@ public class AuthServiceTests
         var secondChallenge = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var act = async () => await service.CompleteMfaLoginAsync(new LoginMfaDTO
@@ -1206,7 +1214,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var mfaResponse = await service.CompleteMfaLoginAsync(new LoginMfaDTO
@@ -1247,7 +1256,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var identityUser = await harness.IdentityContext.Users.SingleAsync(u => u.LegacyUserId == user.Id);
@@ -1294,7 +1304,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         await service.DisableMfaAsync(user.Id, new MfaReauthenticationDTO
@@ -1342,7 +1353,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var act = async () => await service.CompleteMfaLoginAsync(new LoginMfaDTO
@@ -1393,7 +1405,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         loginResponse.RequiresTwoFactor.Should().BeFalse();
@@ -1444,10 +1457,17 @@ public class AuthServiceTests
         var setupCode = harness.EmailService.SentEmailOtps.Single().OtpCode;
         await service.EnableEmailOtpMfaAsync(user.Id, new VerifyEmailOtpMfaDTO { Code = setupCode });
 
+        var status = await service.GetMfaStatusAsync(user.Id);
+        status.IsTwoFactorEnabled.Should().BeTrue();
+        status.IsAuthenticatorAppEnabled.Should().BeFalse();
+        status.IsEmailOtpEnabled.Should().BeTrue();
+        status.RecoveryCodesLeft.Should().Be(0);
+
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         loginResponse.RequiresTwoFactor.Should().BeTrue();
@@ -1467,6 +1487,105 @@ public class AuthServiceTests
 
         mfaResponse.Token.Should().NotBeNullOrWhiteSpace();
         mfaResponse.CompanyId.Should().Be(company.Id);
+    }
+
+    [Fact]
+    public async Task DisableMfaAsync_WhenEmailOtpIsAlsoEnabled_ShouldPreserveEmailOtpOnlyLogin()
+    {
+        var context = TestHelpers.CreateContext(tenantId: 1471);
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var service = TestHelpers.CreateAuthService(context, harness);
+
+        var (_, _, user) = await TestHelpers.CreateConfirmedIdentityBackedUserAsync(
+            context,
+            harness,
+            companyId: 1471,
+            email: "disable-auth-preserve-email@test.com");
+
+        var setup = await service.BeginAuthenticatorSetupAsync(user.Id);
+        await service.VerifyAuthenticatorSetupAsync(user.Id, new VerifyAuthenticatorSetupDTO
+        {
+            Code = TestHelpers.GenerateAuthenticatorCode(setup.SharedKey)
+        });
+
+        await service.SendEmailOtpSetupCodeAsync(user.Id);
+        await service.EnableEmailOtpMfaAsync(user.Id, new VerifyEmailOtpMfaDTO
+        {
+            Code = harness.EmailService.SentEmailOtps.Single().OtpCode
+        });
+
+        await service.DisableMfaAsync(user.Id, new MfaReauthenticationDTO
+        {
+            CurrentPassword = "LongPassword123!"
+        });
+
+        var status = await service.GetMfaStatusAsync(user.Id);
+        status.IsTwoFactorEnabled.Should().BeTrue();
+        status.IsAuthenticatorAppEnabled.Should().BeFalse();
+        status.IsEmailOtpEnabled.Should().BeTrue();
+        status.RecoveryCodesLeft.Should().Be(0);
+
+        var loginResponse = await service.LoginAsync(new LoginDTO
+        {
+            Email = user.Email,
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
+        });
+
+        loginResponse.RequiresTwoFactor.Should().BeTrue();
+        loginResponse.PreferredTwoFactorMethod.Should().Be(MfaLoginMethods.EmailOtp);
+        loginResponse.AvailableTwoFactorMethods.Should().Equal(MfaLoginMethods.EmailOtp);
+        loginResponse.EmailOtpSent.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task DisableEmailOtpMfaAsync_WhenAuthenticatorIsAlsoEnabled_ShouldPreserveAuthenticatorLogin()
+    {
+        var context = TestHelpers.CreateContext(tenantId: 1472);
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var service = TestHelpers.CreateAuthService(context, harness);
+
+        var (_, _, user) = await TestHelpers.CreateConfirmedIdentityBackedUserAsync(
+            context,
+            harness,
+            companyId: 1472,
+            email: "disable-email-preserve-auth@test.com");
+
+        var setup = await service.BeginAuthenticatorSetupAsync(user.Id);
+        await service.VerifyAuthenticatorSetupAsync(user.Id, new VerifyAuthenticatorSetupDTO
+        {
+            Code = TestHelpers.GenerateAuthenticatorCode(setup.SharedKey)
+        });
+
+        await service.SendEmailOtpSetupCodeAsync(user.Id);
+        await service.EnableEmailOtpMfaAsync(user.Id, new VerifyEmailOtpMfaDTO
+        {
+            Code = harness.EmailService.SentEmailOtps.Single().OtpCode
+        });
+
+        await service.DisableEmailOtpMfaAsync(user.Id, new MfaReauthenticationDTO
+        {
+            CurrentPassword = "LongPassword123!"
+        });
+
+        var status = await service.GetMfaStatusAsync(user.Id);
+        status.IsTwoFactorEnabled.Should().BeTrue();
+        status.IsAuthenticatorAppEnabled.Should().BeTrue();
+        status.IsEmailOtpEnabled.Should().BeFalse();
+        status.RecoveryCodesLeft.Should().BeGreaterThan(0);
+
+        var loginResponse = await service.LoginAsync(new LoginDTO
+        {
+            Email = user.Email,
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
+        });
+
+        loginResponse.RequiresTwoFactor.Should().BeTrue();
+        loginResponse.PreferredTwoFactorMethod.Should().Be(MfaLoginMethods.AuthenticatorApp);
+        loginResponse.AvailableTwoFactorMethods.Should().Contain(MfaLoginMethods.AuthenticatorApp);
+        loginResponse.AvailableTwoFactorMethods.Should().Contain(MfaLoginMethods.RecoveryCode);
+        loginResponse.AvailableTwoFactorMethods.Should().NotContain(MfaLoginMethods.EmailOtp);
     }
 
     [Fact]
@@ -1497,7 +1616,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         loginResponse.RequiresTwoFactor.Should().BeTrue();
@@ -1507,6 +1627,43 @@ public class AuthServiceTests
         loginResponse.AvailableTwoFactorMethods.Should().Contain(MfaLoginMethods.EmailOtp);
         loginResponse.EmailOtpSent.Should().BeFalse();
         harness.EmailService.SentEmailOtps.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task LoginAsync_WhenAuthenticatorHasNoRecoveryCodes_ShouldNotOfferRecoveryCodeMethod()
+    {
+        var context = TestHelpers.CreateContext(tenantId: 1481);
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var service = TestHelpers.CreateAuthService(context, harness);
+
+        var (_, _, user) = await TestHelpers.CreateConfirmedIdentityBackedUserAsync(
+            context,
+            harness,
+            companyId: 1481,
+            email: "auth-no-recovery@test.com");
+
+        var setup = await service.BeginAuthenticatorSetupAsync(user.Id);
+        var recoveryCodes = await service.VerifyAuthenticatorSetupAsync(user.Id, new VerifyAuthenticatorSetupDTO
+        {
+            Code = TestHelpers.GenerateAuthenticatorCode(setup.SharedKey)
+        });
+
+        var identityUser = await harness.IdentityContext.Users.SingleAsync(u => u.LegacyUserId == user.Id);
+        foreach (var recoveryCode in recoveryCodes.RecoveryCodes)
+        {
+            (await harness.UserManager.RedeemTwoFactorRecoveryCodeAsync(identityUser, recoveryCode)).Succeeded.Should().BeTrue();
+        }
+
+        var loginResponse = await service.LoginAsync(new LoginDTO
+        {
+            Email = user.Email,
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
+        });
+
+        loginResponse.RequiresTwoFactor.Should().BeTrue();
+        loginResponse.AvailableTwoFactorMethods.Should().Contain(MfaLoginMethods.AuthenticatorApp);
+        loginResponse.AvailableTwoFactorMethods.Should().NotContain(MfaLoginMethods.RecoveryCode);
     }
 
     [Fact]
@@ -1531,7 +1688,8 @@ public class AuthServiceTests
         var loginResponse = await service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
-            Password = "LongPassword123!"
+            Password = "LongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         for (var attempt = 0; attempt < 2; attempt++)
@@ -1669,7 +1827,8 @@ public class AuthControllerTests
         var response = await controller.Login(new LoginDTO
         {
             Email = scenario == "UnknownUser" ? "missing@northwind.com" : "user@northwind.com",
-            Password = "WrongPassword123!"
+            Password = "WrongPassword123!",
+            RecaptchaToken = "good-token"
         });
 
         var unauthorized = response.Should().BeOfType<UnauthorizedObjectResult>().Subject;
@@ -1689,7 +1848,6 @@ public class AuthControllerTests
             harness,
             companyId: 31,
             email: "captcha-controller@test.com");
-        await TestHelpers.SetIdentityFailedAttemptsAsync(harness, user.Id, failedAttempts: 3);
 
         var controller = new AuthController(service);
         var response = await controller.Login(new LoginDTO
@@ -1794,7 +1952,6 @@ internal static class TestHelpers
                 ["JwtSettings:ClockSkewSeconds"] = clockSkewSeconds.ToString(),
                 ["AuthSecurity:Lockout:MaxFailedAccessAttempts"] = "5",
                 ["AuthSecurity:Lockout:LockoutMinutes"] = "5",
-                ["AuthSecurity:LoginCaptcha:FailedAttemptThreshold"] = "3",
                 ["IdentityTokens:PasswordResetTokenLifespanMinutes"] = "120",
                 ["IdentityTokens:EmailConfirmationTokenLifespanMinutes"] = "1440",
                 ["Mfa:AuthenticatorIssuer"] = "AccountingSystem",

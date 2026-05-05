@@ -70,7 +70,6 @@ namespace AccountingSystem.API.Configuration
             CheckNonNegativeInteger(configuration["JwtSettings:ClockSkewSeconds"], "JwtSettings:ClockSkewSeconds", invalidKeys);
             CheckPositiveInteger(configuration["AuthSecurity:Lockout:MaxFailedAccessAttempts"], "AuthSecurity:Lockout:MaxFailedAccessAttempts", invalidKeys);
             CheckPositiveInteger(configuration["AuthSecurity:Lockout:LockoutMinutes"], "AuthSecurity:Lockout:LockoutMinutes", invalidKeys);
-            CheckPositiveInteger(configuration["AuthSecurity:LoginCaptcha:FailedAttemptThreshold"], "AuthSecurity:LoginCaptcha:FailedAttemptThreshold", invalidKeys);
             CheckPositiveInteger(configuration["AuthSecurity:RateLimiting:Login:PermitLimit"], "AuthSecurity:RateLimiting:Login:PermitLimit", invalidKeys);
             CheckPositiveInteger(configuration["AuthSecurity:RateLimiting:Login:WindowSeconds"], "AuthSecurity:RateLimiting:Login:WindowSeconds", invalidKeys);
             CheckPositiveInteger(configuration["AuthSecurity:RateLimiting:RegisterCompany:PermitLimit"], "AuthSecurity:RateLimiting:RegisterCompany:PermitLimit", invalidKeys);

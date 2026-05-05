@@ -162,8 +162,7 @@
             </HeaderContent>
             <RowTemplate Context="context">
                 <MudTd DataLabel="Timestamp" Style="white-space: nowrap;">
-                    <div style="font-weight: 500; color: var(--text-main);">@context.Timestamp.ToString("MMM dd, yyyy")</div>
-                    <div style="color: var(--text-muted); font-size: 0.75rem;">@context.Timestamp.ToString("HH:mm:ss")</div>
+                    <div style="font-weight: 500; color: var(--text-main);">@AuditTimestampFormatter.FormatLocalDateTime(context.Timestamp)</div>
                 </MudTd>
                 <MudTd DataLabel="Admin">
                     <div class="d-flex align-center gap-2" style="color: var(--text-main);">

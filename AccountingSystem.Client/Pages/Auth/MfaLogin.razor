@@ -179,7 +179,7 @@
                     </MudTabPanel>
                 }
 
-                @if (SupportsAuthenticatorApp)
+                @if (SupportsRecoveryCode)
                 {
                     <MudTabPanel Text="Recovery Code">
                         <EditForm Model="@mfaLoginModel" OnSubmit="HandleRecoveryCodeLogin">
@@ -475,7 +475,8 @@
         text-transform: none !important;
         font-weight: 500 !important;
         color: var(--text-muted) !important;
-        min-width: 50% !important; /* Make tabs split the container 50/50 */
+        flex: 1 1 0;
+        min-width: 0 !important;
         padding: 4px 12px !important;
         border-radius: 4px !important;
         transition: all 0.2s ease !important;
@@ -505,6 +506,8 @@
     private bool SupportsAuthenticatorApp => PendingMfaLoginState.SupportsMethod(MfaLoginMethods.AuthenticatorApp);
 
     private bool SupportsEmailOtp => PendingMfaLoginState.SupportsMethod(MfaLoginMethods.EmailOtp);
+
+    private bool SupportsRecoveryCode => PendingMfaLoginState.SupportsMethod(MfaLoginMethods.RecoveryCode);
 
     protected override async Task OnInitializedAsync()
     {

@@ -142,8 +142,13 @@
 
                         <div class="d-flex flex-wrap gap-3 align-center mb-4">
                             <MudChip T="string"
-                                     Color="@(mfaStatus.IsTwoFactorEnabled ? Color.Success : Color.Default)"
+                                     Color="@(mfaStatus.IsAuthenticatorAppEnabled ? Color.Success : Color.Default)"
                                      Variant="Variant.Filled">
+                                @(mfaStatus.IsAuthenticatorAppEnabled ? "Authenticator App Enabled" : "Authenticator App Not Enabled")
+                            </MudChip>
+                            <MudChip T="string"
+                                     Color="@(mfaStatus.IsTwoFactorEnabled ? Color.Success : Color.Default)"
+                                     Variant="Variant.Outlined">
                                 @(mfaStatus.IsTwoFactorEnabled ? "MFA Enabled" : "MFA Not Enabled")
                             </MudChip>
                             <MudChip T="string" Variant="Variant.Outlined" Color="Color.Primary">
@@ -207,7 +212,7 @@
                                                Variant="Variant.Filled"
                                                Color="Color.Primary"
                                                Disabled="@isMfaSubmitting">
-                                        @(isMfaSubmitting ? "Verifying..." : "Enable MFA")
+                                        @(isMfaSubmitting ? "Verifying..." : "Enable Authenticator")
                                     </MudButton>
                                 </div>
                             </EditForm>
@@ -215,7 +220,7 @@
                         else
                         {
                             <div class="d-flex flex-wrap gap-3">
-                                @if (!mfaStatus.IsTwoFactorEnabled)
+                                @if (!mfaStatus.IsAuthenticatorAppEnabled)
                                 {
                                     <MudButton Variant="Variant.Filled"
                                                Color="Color.Primary"
@@ -397,7 +402,7 @@
                             <MudPaper Outlined="true" Class="pa-4 mt-5" Style="background: var(--bg-background);">
                                 <MudText Typo="Typo.subtitle1" Class="mb-2">Disable Email OTP MFA</MudText>
                                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                                    Confirm this action with exactly one method: your current password, an authenticator code, or a recovery code.
+                                    Confirm with your current password. If Authenticator App MFA is enabled, an authenticator code or recovery code can also be used.
                                 </MudText>
 
                                 <EditForm Model="@emailOtpDisableModel" OnValidSubmit="HandleDisableEmailOtpAsync">
@@ -616,7 +621,7 @@
             mfaSetup = null;
             mfaVerificationModel = new VerifyAuthenticatorSetupDTO();
             await LoadMfaStatusAsync();
-            Snackbar.Add("Two-factor authentication is now enabled.", Severity.Success);
+            Snackbar.Add("Authenticator App MFA is now enabled.", Severity.Success);
         }
         catch (Exception ex)
         {
@@ -772,7 +777,7 @@
                     await AuthService.DisableMfa(mfaReauthenticationModel);
                     latestRecoveryCodes.Clear();
                     mfaSetup = null;
-                    Snackbar.Add("Two-factor authentication has been disabled.", Severity.Success);
+                    Snackbar.Add("Authenticator App MFA has been disabled.", Severity.Success);
                     break;
             }
 

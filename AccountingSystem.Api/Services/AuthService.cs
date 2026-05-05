@@ -18,8 +18,6 @@ namespace AccountingSystem.API.Services
     {
         private const int DefaultMaxFailedAccessAttempts = 5;
         private const int DefaultLockoutMinutes = 5;
-        private const int DefaultLoginCaptchaFailedAttemptThreshold = 3;
-
         private readonly AccountingDbContext _context;
         private readonly IdentityAuthDbContext _identityContext;
         private readonly IConfiguration _configuration;
@@ -502,6 +500,21 @@ namespace AccountingSystem.API.Services
                 : await _identityContext.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == normalizedEmail);
 
             var user = await ResolveLegacyUserAsync(loginDto.Email, identityUser);
+            if (identityUser == null && user is { Id: > 0 })
+            {
+                identityUser = await _identityAccountService.FindByLegacyUserIdAsync(user.Id);
+            }
+
+            if (!await IsLoginCurrentlyLockedOutAsync(identityUser, user))
+            {
+                await EnsureLoginCaptchaAsync(
+                    user,
+                    loginDto.Email,
+                    loginDto.RecaptchaToken,
+                    GetCurrentFailedAttempts(identityUser, user),
+                    GetCurrentLockoutEndUtc(identityUser, user));
+            }
+
             if (user == null || user.IsDeleted)
             {
                 await _auditService.WriteAsync(
@@ -515,11 +528,6 @@ namespace AccountingSystem.API.Services
             {
                 user.Role = await _context.Roles.FirstOrDefaultAsync(r => r.Id == user.RoleId)
                     ?? throw new AuthFailureException("RoleMissing");
-            }
-
-            if (identityUser == null && user.Id > 0)
-            {
-                identityUser = await _identityAccountService.FindByLegacyUserIdAsync(user.Id);
             }
 
             if (user.Status == "Blocked")
@@ -546,11 +554,11 @@ namespace AccountingSystem.API.Services
 
             if (HasUsableIdentityPassword(identityUser))
             {
-                await ValidateIdentityPasswordAsync(identityUser!, user, loginDto.Password, loginDto.RecaptchaToken);
+                await ValidateIdentityPasswordAsync(identityUser!, user, loginDto.Password);
             }
             else
             {
-                await ValidateLegacyPasswordFallbackAsync(user, loginDto.Password, loginDto.RecaptchaToken);
+                await ValidateLegacyPasswordFallbackAsync(user, loginDto.Password);
                 identityUser = await RequireIdentityUserAsync(user);
             }
 
@@ -559,14 +567,20 @@ namespace AccountingSystem.API.Services
 
             if (identityUser != null)
             {
-                var authenticatorEnabled = await _userManager.GetTwoFactorEnabledAsync(identityUser);
+                var authenticatorEnabled = await _mfaService.IsAuthenticatorAppEnabledAsync(identityUser);
                 var emailOtpEnabled = await _mfaService.IsEmailOtpEnabledAsync(identityUser);
                 var emailOtpAvailable = emailOtpEnabled && await _userManager.IsEmailConfirmedAsync(identityUser);
+                var recoveryCodesLeft = authenticatorEnabled
+                    ? await _userManager.CountRecoveryCodesAsync(identityUser)
+                    : 0;
                 var availableMethods = new List<string>();
                 if (authenticatorEnabled)
                 {
                     availableMethods.Add(MfaLoginMethods.AuthenticatorApp);
-                    availableMethods.Add(MfaLoginMethods.RecoveryCode);
+                    if (recoveryCodesLeft > 0)
+                    {
+                        availableMethods.Add(MfaLoginMethods.RecoveryCode);
+                    }
                 }
 
                 if (emailOtpAvailable)
@@ -970,7 +984,7 @@ namespace AccountingSystem.API.Services
             };
         }
 
-        private async Task ValidateIdentityPasswordAsync(ApplicationUser identityUser, User legacyUser, string password, string? recaptchaToken)
+        private async Task ValidateIdentityPasswordAsync(ApplicationUser identityUser, User legacyUser, string password)
         {
             if (await _userManager.IsLockedOutAsync(identityUser))
             {
@@ -988,12 +1002,6 @@ namespace AccountingSystem.API.Services
                     lockoutEndUtc: lockedUser.LockoutEnd?.UtcDateTime);
                 throw new AuthFailureException("LockoutActive");
             }
-
-            await EnsureLoginCaptchaIfRequiredAsync(
-                legacyUser,
-                recaptchaToken,
-                identityUser.AccessFailedCount,
-                identityUser.LockoutEnd?.UtcDateTime);
 
             var passwordMatches = await _userManager.CheckPasswordAsync(identityUser, password);
             if (!passwordMatches)
@@ -1034,7 +1042,7 @@ namespace AccountingSystem.API.Services
             await _context.SaveChangesAsync();
         }
 
-        private async Task ValidateLegacyPasswordFallbackAsync(User user, string password, string? recaptchaToken)
+        private async Task ValidateLegacyPasswordFallbackAsync(User user, string password)
         {
             var now = DateTime.UtcNow;
             if (user.LockoutEndUtc.HasValue)
@@ -1056,12 +1064,6 @@ namespace AccountingSystem.API.Services
                 user.LockoutEndUtc = null;
                 await _context.SaveChangesAsync();
             }
-
-            await EnsureLoginCaptchaIfRequiredAsync(
-                user,
-                recaptchaToken,
-                user.AccessFailedCount,
-                user.LockoutEndUtc);
 
             if (!TryVerifyLegacyPassword(password, user, out var passwordMatches))
             {
@@ -1196,6 +1198,37 @@ namespace AccountingSystem.API.Services
         private static bool HasUsableIdentityPassword(ApplicationUser? identityUser)
         {
             return !string.IsNullOrWhiteSpace(identityUser?.PasswordHash);
+        }
+
+        private async Task<bool> IsLoginCurrentlyLockedOutAsync(ApplicationUser? identityUser, User? user)
+        {
+            if (identityUser != null && await _userManager.IsLockedOutAsync(identityUser))
+            {
+                return true;
+            }
+
+            return user?.LockoutEndUtc.HasValue == true &&
+                   user.LockoutEndUtc.Value > DateTime.UtcNow;
+        }
+
+        private static int? GetCurrentFailedAttempts(ApplicationUser? identityUser, User? user)
+        {
+            if (identityUser != null)
+            {
+                return identityUser.AccessFailedCount;
+            }
+
+            return user?.AccessFailedCount;
+        }
+
+        private static DateTime? GetCurrentLockoutEndUtc(ApplicationUser? identityUser, User? user)
+        {
+            if (identityUser?.LockoutEnd.HasValue == true)
+            {
+                return identityUser.LockoutEnd.Value.UtcDateTime;
+            }
+
+            return user?.LockoutEndUtc;
         }
 
         private static void ClearLegacyPassword(User user)
@@ -1389,29 +1422,19 @@ namespace AccountingSystem.API.Services
             return TimeSpan.FromMinutes(minutes);
         }
 
-        private int GetLoginCaptchaFailedAttemptThreshold()
-        {
-            var configuredValue = _configuration.GetValue<int?>("AuthSecurity:LoginCaptcha:FailedAttemptThreshold");
-            return configuredValue is > 0 ? configuredValue.Value : DefaultLoginCaptchaFailedAttemptThreshold;
-        }
-
-        private async Task EnsureLoginCaptchaIfRequiredAsync(
-            User user,
+        private async Task EnsureLoginCaptchaAsync(
+            User? user,
+            string email,
             string? recaptchaToken,
-            int failedAttempts,
+            int? failedAttempts,
             DateTime? lockoutEndUtc)
         {
-            if (failedAttempts < GetLoginCaptchaFailedAttemptThreshold())
-            {
-                return;
-            }
-
             await _auditService.WriteAsync(
                 "AUTH-LOGIN-CAPTCHA-REQUIRED",
-                userId: user.Id,
-                companyId: user.CompanyId,
-                email: user.Email,
-                reason: "FailedAttemptThresholdReached",
+                userId: user?.Id,
+                companyId: user?.CompanyId,
+                email: user?.Email ?? email,
+                reason: "AlwaysRequired",
                 failedAttempts: failedAttempts,
                 lockoutEndUtc: lockoutEndUtc,
                 policy: "LoginCaptcha");
@@ -1420,9 +1443,9 @@ namespace AccountingSystem.API.Services
             {
                 await _auditService.WriteAsync(
                     "AUTH-LOGIN-CAPTCHA-FAILED",
-                    userId: user.Id,
-                    companyId: user.CompanyId,
-                    email: user.Email,
+                    userId: user?.Id,
+                    companyId: user?.CompanyId,
+                    email: user?.Email ?? email,
                     reason: "MissingToken",
                     failedAttempts: failedAttempts,
                     lockoutEndUtc: lockoutEndUtc,
@@ -1434,9 +1457,9 @@ namespace AccountingSystem.API.Services
             {
                 await _auditService.WriteAsync(
                     "AUTH-LOGIN-CAPTCHA-FAILED",
-                    userId: user.Id,
-                    companyId: user.CompanyId,
-                    email: user.Email,
+                    userId: user?.Id,
+                    companyId: user?.CompanyId,
+                    email: user?.Email ?? email,
                     reason: "InvalidToken",
                     failedAttempts: failedAttempts,
                     lockoutEndUtc: lockoutEndUtc,
@@ -1446,9 +1469,9 @@ namespace AccountingSystem.API.Services
 
             await _auditService.WriteAsync(
                 "AUTH-LOGIN-CAPTCHA-SUCCESS",
-                userId: user.Id,
-                companyId: user.CompanyId,
-                email: user.Email,
+                userId: user?.Id,
+                companyId: user?.CompanyId,
+                email: user?.Email ?? email,
                 reason: "CaptchaVerified",
                 failedAttempts: failedAttempts,
                 lockoutEndUtc: lockoutEndUtc,

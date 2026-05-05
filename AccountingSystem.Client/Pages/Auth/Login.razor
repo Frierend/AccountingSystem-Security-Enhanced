@@ -113,12 +113,9 @@
                         </div>
                     }
 
-                    @if (requiresRecaptcha)
-                    {
-                        <div class="recaptcha-wrap mb-5">
-                            <div id="@RecaptchaContainerId"></div>
-                        </div>
-                    }
+                    <div class="recaptcha-wrap mb-5">
+                        <div id="@RecaptchaContainerId"></div>
+                    </div>
 
                     <MudButton ButtonType="ButtonType.Submit"
                                Variant="Variant.Filled"
@@ -520,7 +517,7 @@
     private bool logoLoaded = false;
     private string errorMessage = "";
     private bool rememberMe = false;
-    private bool requiresRecaptcha = false;
+    private bool requiresRecaptcha = true;
     private bool captchaRendered = false;
     private bool captchaRenderAttempted = false;
 
@@ -592,7 +589,7 @@
         errorMessage = "";
         try
         {
-            if (!await CaptureRecaptchaTokenIfNeededAsync())
+            if (!await CaptureRecaptchaTokenAsync())
             {
                 return;
             }
@@ -645,14 +642,8 @@
         }
     }
 
-    private async Task<bool> CaptureRecaptchaTokenIfNeededAsync()
+    private async Task<bool> CaptureRecaptchaTokenAsync()
     {
-        if (!requiresRecaptcha)
-        {
-            loginModel.RecaptchaToken = string.Empty;
-            return true;
-        }
-
         var token = await JS.InvokeAsync<string>("getCaptchaResponse");
         if (string.IsNullOrWhiteSpace(token))
         {
@@ -691,7 +682,6 @@
     private void ClearRecaptchaState()
     {
         loginModel.RecaptchaToken = string.Empty;
-        requiresRecaptcha = false;
         captchaRendered = false;
         captchaRenderAttempted = false;
     }

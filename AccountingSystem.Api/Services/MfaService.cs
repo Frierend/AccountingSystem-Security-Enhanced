@@ -62,17 +62,18 @@ namespace AccountingSystem.API.Services
         {
             var identityUser = await RequireIdentityUserAsync(legacyUserId);
             var authenticatorKey = await _userManager.GetAuthenticatorKeyAsync(identityUser);
-            var isTwoFactorEnabled = await _userManager.GetTwoFactorEnabledAsync(identityUser);
+            var isAuthenticatorAppEnabled = await IsAuthenticatorAppEnabledAsync(identityUser);
+            var isEmailOtpEnabled = await IsEmailOtpEnabledAsync(identityUser);
 
             return new MfaStatusDTO
             {
-                IsTwoFactorEnabled = isTwoFactorEnabled,
-                IsAuthenticatorAppEnabled = isTwoFactorEnabled,
+                IsTwoFactorEnabled = isAuthenticatorAppEnabled || isEmailOtpEnabled,
+                IsAuthenticatorAppEnabled = isAuthenticatorAppEnabled,
                 HasAuthenticatorKey = !string.IsNullOrWhiteSpace(authenticatorKey),
-                RecoveryCodesLeft = isTwoFactorEnabled
+                RecoveryCodesLeft = isAuthenticatorAppEnabled
                     ? await _userManager.CountRecoveryCodesAsync(identityUser)
                     : 0,
-                IsEmailOtpEnabled = await IsEmailOtpEnabledAsync(identityUser),
+                IsEmailOtpEnabled = isEmailOtpEnabled,
                 IsEmailConfirmed = await _userManager.IsEmailConfirmedAsync(identityUser),
                 Email = identityUser.Email ?? string.Empty
             };
@@ -165,9 +166,9 @@ namespace AccountingSystem.API.Services
             var identityUser = await RequireIdentityUserAsync(legacyUserId);
             await ReauthenticateAsync(identityUser, dto);
 
-            if (!await _userManager.GetTwoFactorEnabledAsync(identityUser))
+            if (!await IsAuthenticatorAppEnabledAsync(identityUser))
             {
-                throw new InvalidOperationException("Two-factor authentication is not enabled for this account.");
+                throw new InvalidOperationException("Authenticator App MFA is not enabled for this account.");
             }
 
             var refreshedUser = await RequireIdentityUserByIdAsync(identityUser.Id);
@@ -216,6 +217,17 @@ namespace AccountingSystem.API.Services
                 EmailOtpEnabledTokenName);
 
             return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public async Task<bool> IsAuthenticatorAppEnabledAsync(ApplicationUser identityUser)
+        {
+            if (!await _userManager.GetTwoFactorEnabledAsync(identityUser))
+            {
+                return false;
+            }
+
+            var authenticatorKey = await _userManager.GetAuthenticatorKeyAsync(identityUser);
+            return !string.IsNullOrWhiteSpace(authenticatorKey);
         }
 
         public async Task SendEmailOtpSetupCodeAsync(int legacyUserId)
@@ -362,7 +374,7 @@ namespace AccountingSystem.API.Services
         {
             var challenge = _loginChallengeTokenService.Validate(dto.ChallengeToken);
             var identityUser = await RequireChallengeIdentityUserAsync(challenge);
-            var authenticatorEnabled = await _userManager.GetTwoFactorEnabledAsync(identityUser);
+            var authenticatorEnabled = await IsAuthenticatorAppEnabledAsync(identityUser);
             var emailOtpEnabled = await IsEmailOtpEnabledAsync(identityUser);
             if (!authenticatorEnabled && !emailOtpEnabled)
             {
@@ -518,9 +530,9 @@ namespace AccountingSystem.API.Services
                 return;
             }
 
-            if (!await _userManager.GetTwoFactorEnabledAsync(identityUser))
+            if (!await IsAuthenticatorAppEnabledAsync(identityUser))
             {
-                throw new InvalidOperationException("Two-factor authentication is not enabled for this account. Use your current password to continue.");
+                throw new InvalidOperationException("Authenticator App MFA is not enabled for this account. Use your current password to continue.");
             }
 
             if (!string.IsNullOrWhiteSpace(dto.TwoFactorCode))

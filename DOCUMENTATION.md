@@ -587,7 +587,7 @@ Both API and Client include project references to `AccountingSystem.Shared`, cre
 - **Database:** Microsoft SQL Server accessed through EF Core 8
 - **Authentication:** JWT bearer tokens with role-based authorization
 - **Email Delivery:** SMTP via `SmtpClient` (Gmail App Password compatible when Gmail SMTP is used)
-- **Bot Protection:** Google reCAPTCHA v2 Checkbox in company registration flow and adaptive login reCAPTCHA after repeated failed attempts
+- **Bot Protection:** Google reCAPTCHA v2 Checkbox in company registration flow and always-on login reCAPTCHA required for every non-locked login attempt
 - **Payment Integration:** PayMongo source and redirect flow (test-mode usage for local/academic demonstration)
 - **Additional libraries:** MudBlazor, Blazored.LocalStorage, QuestPDF, Swashbuckle
 
@@ -612,6 +612,8 @@ Default lockout settings in configuration:
 
 The login UI intentionally does not show exact attempts left or a lockout countdown. This limits attacker feedback while still showing generic user-friendly errors for CAPTCHA and temporary lockout states.
 
+Login reCAPTCHA is shown by default and required before credential processing. Account lockout still applies after the configured failed attempts.
+
 Rate limiting is configured per auth endpoint (login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, MFA management).
 
 ### 8.3 Authentication Features
@@ -626,8 +628,9 @@ Implemented features:
 - Optional MFA:
   - Authenticator App MFA with recovery codes
   - Email OTP MFA to a confirmed email address
+  - Authenticator App MFA and Email OTP MFA are independently managed from the user profile
 - Registration protected by Google reCAPTCHA token verification
-- Login protected by adaptive reCAPTCHA after repeated failed attempts
+- Login protected by Google reCAPTCHA token verification on every normal login attempt
 
 Password handling status:
 
@@ -653,8 +656,10 @@ Password handling status:
 
 - `AuditMiddleware` records successful state-changing non-auth requests
 - Auth and account-security events are captured by `AuthSecurityAuditService`
+- Tenant audit logs display System and Security categories
 - Super-admin actions are recorded in `SuperAdminAuditLogs`
 - SuperAdmin-account login failures, lockouts, CAPTCHA-required events, MFA challenges, and successful logins are mirrored into SuperAdmin governance logs.
+- OTP values, recovery codes, CAPTCHA tokens, passwords, JWTs, and secrets are not written to audit details.
 - Local development can use a logging email sender when SMTP is not configured
 
 ### 8.7 Incident Response Plan
@@ -701,7 +706,7 @@ Remaining improvements:
 - [x] Reset password flow
 - [x] Email confirmation and resend confirmation flows
 - [x] reCAPTCHA-protected registration
-- [x] Adaptive login reCAPTCHA
+- [x] Always-on login reCAPTCHA
 - [x] TOTP Authenticator App MFA
 - [x] Email OTP MFA
 - [x] PayMongo source/redirect payment flow (test mode)
@@ -837,7 +842,8 @@ dotnet build AccountingSystem.sln
 ```json
 {
   "email": "admin@company.com",
-  "password": "your-password"
+  "password": "your-password",
+  "recaptchaToken": "client-recaptcha-response-token"
 }
 ```
 
@@ -868,3 +874,12 @@ dotnet build AccountingSystem.sln
   "remarks": "Partial payment"
 }
 ```
+
+
+to run in powershell:
+cd C:\Projects\AccountingSystem\AccountingSystem.Api
+dotnet run
+
+in another powershell:
+cd C:\Projects\AccountingSystem\AccountingSystem.Client
+dotnet run

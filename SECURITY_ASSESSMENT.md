@@ -18,7 +18,7 @@ This document is descriptive only and does not alter code, schema, migrations, o
 | Resend confirmation | Implemented | `POST /api/auth/resend-confirmation`, `AuthService.ResendConfirmationAsync` |
 | MFA (Authenticator App, Email OTP, recovery codes) | Implemented | `/api/auth/login/mfa`, `/api/auth/login/mfa/email/send`, and `/api/auth/mfa/*` endpoints |
 | Registration bot protection | Implemented | reCAPTCHA token from `RegisterCompany.razor` validated by `CaptchaService` |
-| Adaptive login bot protection | Implemented | login reCAPTCHA is required only after repeated failed attempts |
+| Always-on login bot protection | Implemented | login reCAPTCHA is shown by default and required server-side for every non-locked login attempt |
 | PayMongo source + redirect payment flow | Implemented (test mode for project use) | `PaymentController.CreateSource`, client payment callback page |
 | PayMongo webhook verification hardening | Implemented | `PaymentService.VerifyWebhookSignature` validates HMAC signature and replay window |
 
@@ -38,6 +38,12 @@ Password policy is enforced through `AccountingSystem.Shared/Validation/Password
 - Legacy password fields (`PasswordHash`, `PasswordSalt`) remain for compatibility and fallback validation through `LegacyPasswordService`.
 - New registration/admin-created users are provisioned to Identity (`EnsureProvisionedAsync`), while legacy compatibility remains active.
 
+## Multi-Factor Authentication
+
+- Authenticator App MFA and Email OTP MFA are optional and independently managed from the user profile.
+- Email OTP MFA requires a confirmed email address and does not require Authenticator App MFA to be enabled.
+- Recovery codes remain available for Authenticator App MFA where valid recovery codes exist.
+
 ## Lockout and Rate Limiting
 
 Default security controls from configuration and startup:
@@ -45,6 +51,7 @@ Default security controls from configuration and startup:
 - Lockout threshold: 5 failed attempts.
 - Lockout duration: 5 minutes for demo/presentation.
 - The login UI intentionally avoids showing exact attempts left or a countdown. It uses generic messages to reduce attacker feedback.
+- Login reCAPTCHA is always required before credential processing; account lockout still applies after the configured failed attempts.
 - Endpoint-specific rate limits exist for login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, and MFA management.
 
 ## Secret and Configuration Handling
@@ -67,8 +74,10 @@ Default security controls from configuration and startup:
 
 - `AuditMiddleware` logs successful state-changing non-auth routes.
 - Auth security events are logged by `AuthSecurityAuditService` (login outcomes, lockouts, auth rate-limit events, MFA events, etc.).
+- Tenant audit logs show System and Security categories.
 - Super-admin governance actions are logged in `SuperAdminAuditLogs`.
 - Failed login, lockout, CAPTCHA-required, MFA-challenge, and login-success events targeting SuperAdmin accounts are mirrored into SuperAdmin governance logs.
+- Passwords, OTP values, recovery codes, CAPTCHA tokens, JWTs, and secrets are not written to audit details.
 
 ## Security Risks by Severity
 
@@ -119,11 +128,11 @@ Default security controls from configuration and startup:
 - [x] Resend confirmation flow
 - [x] MFA login and MFA management endpoints
 - [x] reCAPTCHA-protected registration
-- [x] Adaptive login reCAPTCHA after repeated failed attempts
+- [x] Always-on login reCAPTCHA
 - [x] PayMongo source/redirect test flow
 - [x] Protected dashboard and role-based pages
 - [x] Audit logs and auth security audit events
 
 ## Conclusion
 
-The project has a substantial implemented authentication and authorization foundation for IT16, including account recovery, email confirmation, optional Authenticator App MFA, optional Email OTP MFA, recovery codes, lockout, adaptive login reCAPTCHA, rate limiting, audit logging, PayMongo webhook signature validation, and CI-backed security-tooling evidence. The most important remaining hardening items are stronger token lifecycle controls, production-grade/shared Email OTP challenge storage, and tightening CI security enforcement thresholds after baseline remediation.
+The project has a substantial implemented authentication and authorization foundation for IT16, including account recovery, email confirmation, optional independently managed Authenticator App MFA, optional Email OTP MFA, recovery codes, lockout, always-on login reCAPTCHA, rate limiting, audit logging, PayMongo webhook signature validation, and CI-backed security-tooling evidence. The most important remaining hardening items are stronger token lifecycle controls, production-grade/shared Email OTP challenge storage, and tightening CI security enforcement thresholds after baseline remediation.
