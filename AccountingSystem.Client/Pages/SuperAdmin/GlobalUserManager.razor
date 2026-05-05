@@ -6,6 +6,7 @@
 @using MudBlazor
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SuperAdmin")]
 @inject SuperAdminService SuperAdminService
+@inject AuthService AuthService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject ILogger<GlobalUserManager> Logger
@@ -522,6 +523,7 @@
 @code {
     private List<GlobalUserDTO> users = new List<GlobalUserDTO>();
     private List<SuperAdminAccountDTO> superAdmins = new List<SuperAdminAccountDTO>();
+    private MfaStatusDTO currentMfaStatus = new();
     private CreateSuperAdminDTO createSuperAdminModel = new();
     private bool isLoading = true;
     private bool showCreateSuperAdmin;
@@ -542,6 +544,16 @@
         {
             users = await SuperAdminService.GetAllUsersAsync();
             superAdmins = await SuperAdminService.GetSuperAdminAccountsAsync();
+
+            try
+            {
+                currentMfaStatus = await AuthService.GetMfaStatus();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Unable to load current SuperAdmin MFA status for step-up verification UX hints.");
+                currentMfaStatus = new MfaStatusDTO();
+            }
         }
         catch (Exception ex)
         {
@@ -574,7 +586,17 @@
         isSuperAdminSubmitting = true;
         try
         {
-            await SuperAdminService.CreateSuperAdminAsync(createSuperAdminModel);
+            var stepUp = await RequestStepUpVerificationAsync("Create Backup SuperAdmin", createSuperAdminModel.Email);
+            if (stepUp == null)
+            {
+                return;
+            }
+
+            await SuperAdminService.CreateSuperAdminAsync(new CreateSuperAdminRequestDTO
+            {
+                SuperAdmin = createSuperAdminModel,
+                StepUp = stepUp
+            });
             Snackbar.Add("Backup SuperAdmin created. Ask them to confirm email and enable MFA.", Severity.Success);
             CancelCreateSuperAdmin();
             await LoadData();
@@ -582,7 +604,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to create backup SuperAdmin.");
-            Snackbar.Add("Unable to create backup SuperAdmin. Please verify the account details and try again.", Severity.Error);
+            Snackbar.Add(ex.Message, Severity.Error);
         }
         finally
         {
@@ -594,7 +616,22 @@
     {
         try
         {
-            await SuperAdminService.UpdateSuperAdminStatusAsync(admin.Id, newStatus);
+            var actionDescription = newStatus == "Active"
+                ? "Enable SuperAdmin account"
+                : "Disable SuperAdmin account";
+            var stepUp = await RequestStepUpVerificationAsync(actionDescription, admin.Email);
+            if (stepUp == null)
+            {
+                return;
+            }
+
+            await SuperAdminService.UpdateSuperAdminStatusAsync(
+                admin.Id,
+                new UpdateSuperAdminStatusRequestDTO
+                {
+                    Status = newStatus,
+                    StepUp = stepUp
+                });
             admin.Status = newStatus;
             admin.IsActive = newStatus == "Active";
             Snackbar.Add($"SuperAdmin '{admin.Email}' is now {newStatus}.", Severity.Success);
@@ -603,7 +640,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to update SuperAdmin status for user id {UserId}.", admin.Id);
-            Snackbar.Add("Unable to update SuperAdmin status. The last active SuperAdmin cannot be disabled.", Severity.Error);
+            Snackbar.Add(ex.Message, Severity.Error);
             await LoadData();
         }
     }
@@ -716,6 +753,35 @@
         var dialog  = await DialogService.ShowAsync<ShadcnConfirmDialog>("Confirm", parameters, options);
         var dialogResult = await dialog.Result;
         return dialogResult is not null && !dialogResult.Canceled;
+    }
+
+    private async Task<SuperAdminStepUpVerificationDTO?> RequestStepUpVerificationAsync(string actionDescription, string targetDisplay)
+    {
+        var parameters = new DialogParameters
+        {
+            [nameof(SuperAdminStepUpDialog.ActionDescription)] = actionDescription,
+            [nameof(SuperAdminStepUpDialog.TargetDisplay)] = targetDisplay,
+            [nameof(SuperAdminStepUpDialog.IsAuthenticatorAppEnabled)] = currentMfaStatus.IsAuthenticatorAppEnabled,
+            [nameof(SuperAdminStepUpDialog.IsEmailOtpEnabled)] = currentMfaStatus.IsEmailOtpEnabled
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            CloseButton = true,
+            CloseOnEscapeKey = false
+        };
+
+        var dialog = await DialogService.ShowAsync<SuperAdminStepUpDialog>("Verify Identity", parameters, options);
+        var result = await dialog.Result;
+
+        if (result?.Canceled != false || result.Data is not SuperAdminStepUpVerificationDTO stepUp)
+        {
+            return null;
+        }
+
+        return stepUp;
     }
 
     private bool FilterFunc(GlobalUserDTO element)

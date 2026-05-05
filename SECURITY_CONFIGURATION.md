@@ -59,7 +59,7 @@ The project policy is:
 ### Required outside Development
 
 - `PayMongo__SecretKey`
-- `Recaptcha__SiteKey`
+- `Recaptcha__SiteKey` (public; retained for the compatibility config endpoint)
 - `Recaptcha__SecretKey`
 - `Smtp__Host`
 - `Smtp__Port`
@@ -84,12 +84,18 @@ The seeded/demo bootstrap SuperAdmin is created with `EmailConfirmed = true` so 
 
 - Registration reCAPTCHA is implemented through Google reCAPTCHA v2 Checkbox.
 - Login reCAPTCHA is always shown on the login page and required server-side for every non-locked login attempt.
-- `Recaptcha__SiteKey` is public but still configuration-based and served to the client through `GET /api/auth/recaptcha/config`.
+- The reCAPTCHA public site key is client-side and may appear in the Blazor auth pages.
+- `GET /api/auth/recaptcha/config` may remain available for compatibility, but login and registration do not depend on fetching the site key before rendering.
 - `Recaptcha__SecretKey` is server-only and must not appear in client files or committed configuration.
 - Account lockout still applies after the configured failed attempts, with a 5-minute demo/presentation lockout in the current configuration.
 - Authenticator App MFA and Email OTP MFA are optional and independently managed from the user profile.
 - Email OTP MFA requires confirmed email; the profile can resend confirmation before setup.
-- Backup SuperAdmin creation is supported, and the last active SuperAdmin account cannot be disabled.
+- Backup SuperAdmin creation is supported, and the last active SuperAdmin account cannot be disabled or deleted.
+- Creating/enabling/disabling SuperAdmin accounts is a sensitive governance action and requires step-up verification (password re-entry, MFA when enabled, and reason/justification logging).
+- SuperAdmin governance audit logs capture step-up verification outcomes and governance actions without storing passwords, MFA codes, OTPs, recovery codes, CAPTCHA tokens, JWTs, or secrets.
+- SuperAdmin audit logs provide platform-level governance and security-event visibility for privileged account actions.
+
+If a SuperAdmin account is suspected to be compromised, use a trusted backup SuperAdmin account to review governance logs, disable suspicious accounts, reset credentials, and rotate affected secrets when needed.
 
 ## Local Development Setup
 

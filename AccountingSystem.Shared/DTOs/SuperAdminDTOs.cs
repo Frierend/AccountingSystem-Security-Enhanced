@@ -103,6 +103,41 @@ namespace AccountingSystem.Shared.DTOs
         public string ConfirmPassword { get; set; } = string.Empty;
     }
 
+    public class SuperAdminStepUpVerificationDTO
+    {
+        [Required]
+        public string CurrentPassword { get; set; } = string.Empty;
+
+        [MaxLength(32)]
+        public string MfaMethod { get; set; } = string.Empty;
+
+        public string MfaCode { get; set; } = string.Empty;
+
+        public string RecoveryCode { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(240, ErrorMessage = "Reason must be 240 characters or less.")]
+        public string Reason { get; set; } = string.Empty;
+    }
+
+    public class CreateSuperAdminRequestDTO
+    {
+        [Required]
+        public CreateSuperAdminDTO SuperAdmin { get; set; } = new();
+
+        [Required]
+        public SuperAdminStepUpVerificationDTO StepUp { get; set; } = new();
+    }
+
+    public class UpdateSuperAdminStatusRequestDTO
+    {
+        [Required]
+        public string Status { get; set; } = string.Empty;
+
+        [Required]
+        public SuperAdminStepUpVerificationDTO StepUp { get; set; } = new();
+    }
+
     // Super Admin Audit Log DTO
     public class SuperAdminAuditLogDTO
     {

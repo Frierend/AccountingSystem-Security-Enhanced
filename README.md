@@ -22,7 +22,7 @@
 - Role-based UI and API access control.
 - Audit log visibility for tenant and super-admin actions.
 - PayMongo payment source and redirect flow (test-mode usage for local/academic demonstration).
-- Registration and login flows protected by Google reCAPTCHA v2 Checkbox using configuration-provided site/secret keys.
+- Registration and login flows protected by Google reCAPTCHA v2 Checkbox using a client-side public site key and a server-side configured secret key.
 - Password reset and email confirmation flows through SMTP.
 
 ## System Architecture
@@ -59,13 +59,14 @@
   - lockout after 5 failed attempts
   - temporary demo lockout duration: 5 minutes
   - login reCAPTCHA is always shown and required before credential processing
-  - reCAPTCHA public site key is served from API configuration; the secret key stays server-side
+  - reCAPTCHA public site key is embedded in the Blazor client because it is public; the secret key stays server-side
   - endpoint-specific rate limiting on auth routes.
 - Optional MFA:
   - Authenticator App MFA with recovery codes
   - Email OTP MFA to a confirmed email address
   - Authenticator App MFA and Email OTP MFA are independently managed from the user profile
   - profile Email OTP setup shows email confirmation state and can resend the confirmation email before enabling Email OTP
+  - sensitive SuperAdmin governance actions require step-up verification (password re-entry plus MFA when enabled)
 - Tenant isolation through middleware and EF Core query filters.
 - Audit logging through `AuditMiddleware` plus dedicated auth security events; tenant audit logs show System and Security categories, and SuperAdmin-account auth/security and governance events are mirrored in governance logs.
 
@@ -76,6 +77,7 @@
 - **Authorization policy**: roles include `Admin`, `Accounting`, `Management`, and `SuperAdmin`; protected pages and API endpoints enforce role checks.
 - **Data handling policy**: passwords are not stored in plaintext; OTP values, recovery codes, CAPTCHA tokens, JWTs, and secrets are not logged; EF Core is used for database access; HTTPS redirection is enabled in API startup.
 - **Monitoring policy**: security-relevant events are logged through tenant audit logs and SuperAdmin governance logs, including SuperAdmin-account auth/security events.
+- **SuperAdmin governance policy**: creating/enabling/disabling SuperAdmin accounts requires step-up verification and a required reason that is recorded in SuperAdmin audit logs.
 
 ## Code Auditing Tooling Evidence (CI)
 
@@ -115,8 +117,12 @@
 ### SuperAdmin
 - Cross-tenant governance endpoints and super-admin audit logs.
 - Can create backup SuperAdmin/System Administrator accounts from Global User Management.
-- The system prevents disabling the last active SuperAdmin account.
+- The system prevents disabling or deleting the last active SuperAdmin account.
+- Creating, enabling, and disabling SuperAdmin accounts is treated as a sensitive governance action and requires step-up verification (password re-entry and MFA when enabled).
+- SuperAdmin governance audit logs record actor, target, action result, and reason/justification with safe metadata only.
 - The seeded/demo bootstrap SuperAdmin is email-confirmed for MFA demonstration; backup SuperAdmins use the normal email confirmation flow.
+
+If a SuperAdmin account is suspected to be compromised, use a trusted backup SuperAdmin account to review governance logs, disable suspicious accounts, reset credentials, and rotate affected secrets if needed.
 
 ## Core Modules
 

@@ -10,7 +10,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Transactions;
 
 namespace AccountingSystem.API.Controllers
@@ -26,8 +28,24 @@ namespace AccountingSystem.API.Controllers
         private readonly ILegacyIdentityBridgeService _identityBridgeService;
         private readonly IIdentityAccountService _identityAccountService;
         private readonly IAccountEmailService _accountEmailService;
+        private readonly IEmailOtpChallengeStore _emailOtpChallengeStore;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IConfiguration _configuration;
+
+        private const string EmailOtpLoginProvider = "AccSysEmailOtpMfa";
+        private const string EmailOtpEnabledTokenName = "Enabled";
+        private const string PasswordOnlyStepUpMethod = "PasswordOnly";
+        private const int DefaultEmailOtpExpirationMinutes = 5;
+        private const int DefaultEmailOtpMaxVerificationAttempts = 3;
+        private const int DefaultEmailOtpResendCooldownSeconds = 60;
+        private const int MaxStepUpReasonLength = 240;
+        private static readonly Regex ConsecutiveWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
+        private static readonly Regex SuspiciousReasonValueRegex = new(
+            @"(?i)(password|otp|recovery\s*code|token|jwt|secret|api\s*key|smtp|paymongo|captcha)",
+            RegexOptions.Compiled);
+        private static readonly Regex LongTokenLikeValueRegex = new(
+            @"\b[A-Za-z0-9_\-]{24,}\b",
+            RegexOptions.Compiled);
 
         public SuperAdminController(
             AccountingDbContext context,
@@ -36,6 +54,7 @@ namespace AccountingSystem.API.Controllers
             IdentityAuthDbContext identityContext,
             IIdentityAccountService identityAccountService,
             IAccountEmailService accountEmailService,
+            IEmailOtpChallengeStore emailOtpChallengeStore,
             UserManager<ApplicationUser> userManager,
             IConfiguration configuration)
         {
@@ -45,6 +64,7 @@ namespace AccountingSystem.API.Controllers
             _identityBridgeService = identityBridgeService;
             _identityAccountService = identityAccountService;
             _accountEmailService = accountEmailService;
+            _emailOtpChallengeStore = emailOtpChallengeStore;
             _userManager = userManager;
             _configuration = configuration;
         }
@@ -299,10 +319,32 @@ namespace AccountingSystem.API.Controllers
         }
 
         [HttpPost("superadmins")]
-        public async Task<IActionResult> CreateSuperAdmin([FromBody] CreateSuperAdminDTO dto)
+        public async Task<IActionResult> CreateSuperAdmin([FromBody] CreateSuperAdminRequestDTO request)
         {
-            var email = dto.Email.Trim();
-            var fullName = dto.FullName.Trim();
+            if (!User.IsInRole("SuperAdmin"))
+            {
+                return Forbid();
+            }
+
+            if (request?.SuperAdmin == null || request.StepUp == null)
+            {
+                return BadRequest(new { message = "Step-up verification payload is required." });
+            }
+
+            var dto = request.SuperAdmin;
+            var email = (dto.Email ?? string.Empty).Trim();
+            var fullName = (dto.FullName ?? string.Empty).Trim();
+
+            var stepUpResult = await VerifySensitiveSuperAdminActionAsync(
+                request.StepUp,
+                targetType: "SuperAdminAccount",
+                targetId: 0,
+                targetName: email,
+                actionName: "SUPERADMIN-CREATE");
+            if (!stepUpResult.Succeeded)
+            {
+                return StatusCode(stepUpResult.StatusCode, new { message = stepUpResult.Message });
+            }
 
             if (!PasswordPolicy.TryValidate(dto.Password, out var passwordValidationMessage))
             {
@@ -363,8 +405,16 @@ namespace AccountingSystem.API.Controllers
                 string.Empty,
                 "Active",
                 confirmationSent
-                    ? "Backup SuperAdmin account created. Email confirmation sent; MFA setup is recommended."
-                    : "Backup SuperAdmin account created. Email confirmation could not be sent; use resend confirmation from the profile or confirmation page.");
+                    ? BuildGovernanceDetails(
+                        "Backup SuperAdmin account created. Email confirmation sent; MFA setup is recommended.",
+                        stepUpResult.SanitizedReason,
+                        stepUpResult.StepUpMethod,
+                        stepUpResult.MfaRequired)
+                    : BuildGovernanceDetails(
+                        "Backup SuperAdmin account created. Email confirmation could not be sent; use resend confirmation from the profile or confirmation page.",
+                        stepUpResult.SanitizedReason,
+                        stepUpResult.StepUpMethod,
+                        stepUpResult.MfaRequired));
             await _context.SaveChangesAsync();
 
             return Ok(new
@@ -375,9 +425,116 @@ namespace AccountingSystem.API.Controllers
             });
         }
 
-        [HttpPut("superadmins/{id}/status")]
-        public async Task<IActionResult> UpdateSuperAdminStatus(int id, [FromBody] UpdateUserStatusDTO dto)
+        [HttpPost("stepup/email/send")]
+        public async Task<IActionResult> SendStepUpEmailOtp()
         {
+            if (!User.IsInRole("SuperAdmin"))
+            {
+                return Forbid();
+            }
+
+            var actor = await ResolveCurrentSuperAdminAsync();
+            if (actor == null)
+            {
+                return Forbid();
+            }
+
+            var identityUser = await _identityAccountService.FindByLegacyUserIdAsync(actor.Id);
+            if (identityUser == null)
+            {
+                await LogSuperAdminAction(
+                    "SUPERADMIN-STEPUP-FAILED",
+                    "SuperAdminAccount",
+                    actor.Id,
+                    $"{actor.FullName} ({actor.Email})",
+                    string.Empty,
+                    "Failed",
+                    "Step-up verification failed. Result=IdentityUnavailable; Action=SEND-STEPUP-EMAIL-OTP; Reason=N/A.");
+                await _context.SaveChangesAsync();
+                return BadRequest(new { message = "Unable to send a verification code right now." });
+            }
+
+            var emailOtpEnabled = await IsEmailOtpEnabledAsync(identityUser);
+            var emailConfirmed = await _userManager.IsEmailConfirmedAsync(identityUser);
+            if (!emailOtpEnabled || !emailConfirmed || string.IsNullOrWhiteSpace(identityUser.Email))
+            {
+                await LogSuperAdminAction(
+                    "SUPERADMIN-STEPUP-MFA-REQUIRED",
+                    "SuperAdminAccount",
+                    actor.Id,
+                    $"{actor.FullName} ({actor.Email})",
+                    string.Empty,
+                    "EmailOtpUnavailable",
+                    "Step-up Email OTP is unavailable for the acting SuperAdmin account.");
+                await _context.SaveChangesAsync();
+                return BadRequest(new { message = "Email OTP MFA is not available for this account." });
+            }
+
+            var code = GenerateEmailOtpCode();
+            var issueResult = _emailOtpChallengeStore.Issue(
+                BuildSuperAdminEmailOtpChallengeKey(identityUser.Id),
+                identityUser.Id,
+                actor.Id,
+                code,
+                GetEmailOtpExpiration(),
+                GetEmailOtpResendCooldown());
+
+            if (!issueResult.Succeeded)
+            {
+                return StatusCode(StatusCodes.Status429TooManyRequests, new
+                {
+                    message = "Please wait before requesting another email verification code."
+                });
+            }
+
+            try
+            {
+                await _accountEmailService.SendEmailOtpAsync(
+                    identityUser.Email,
+                    actor.FullName,
+                    code,
+                    GetEmailOtpExpirationMinutes());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send step-up email OTP for SuperAdmin user id {UserId}.", actor.Id);
+                return StatusCode(StatusCodes.Status500InternalServerError, new
+                {
+                    message = "Unable to send a verification code right now."
+                });
+            }
+
+            await LogSuperAdminAction(
+                "SUPERADMIN-STEPUP-MFA-REQUIRED",
+                "SuperAdminAccount",
+                actor.Id,
+                $"{actor.FullName} ({actor.Email})",
+                string.Empty,
+                "EmailOtpIssued",
+                "Step-up Email OTP challenge issued for a sensitive SuperAdmin governance action.");
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Verification code sent to your email." });
+        }
+
+        [HttpPut("superadmins/{id}/status")]
+        public async Task<IActionResult> UpdateSuperAdminStatus(int id, [FromBody] UpdateSuperAdminStatusRequestDTO request)
+        {
+            if (!User.IsInRole("SuperAdmin"))
+            {
+                return Forbid();
+            }
+
+            if (request?.StepUp == null)
+            {
+                return BadRequest(new { message = "Step-up verification payload is required." });
+            }
+
+            var dto = new UpdateUserStatusDTO
+            {
+                Status = request.Status
+            };
+
             var target = await _context.Users
                 .IgnoreQueryFilters()
                 .Include(user => user.Role)
@@ -398,6 +555,17 @@ namespace AccountingSystem.API.Controllers
             if (string.Equals(oldStatus, dto.Status, StringComparison.Ordinal))
             {
                 return Ok(new { message = $"SuperAdmin '{target.Email}' is already {dto.Status}." });
+            }
+
+            var stepUpResult = await VerifySensitiveSuperAdminActionAsync(
+                request.StepUp,
+                targetType: "SuperAdminAccount",
+                targetId: target.Id,
+                targetName: target.Email,
+                actionName: dto.Status == "Active" ? "SUPERADMIN-ENABLE" : "SUPERADMIN-DISABLE");
+            if (!stepUpResult.Succeeded)
+            {
+                return StatusCode(stepUpResult.StatusCode, new { message = stepUpResult.Message });
             }
 
             var disabling = dto.Status != "Active";
@@ -436,7 +604,11 @@ namespace AccountingSystem.API.Controllers
                     $"{target.FullName} ({target.Email})",
                     oldStatus,
                     dto.Status,
-                    $"SuperAdmin account '{target.Email}' status changed from {oldStatus} to {dto.Status}.");
+                    BuildGovernanceDetails(
+                        $"SuperAdmin account '{target.Email}' status changed from {oldStatus} to {dto.Status}.",
+                        stepUpResult.SanitizedReason,
+                        stepUpResult.StepUpMethod,
+                        stepUpResult.MfaRequired));
                 await _context.SaveChangesAsync();
 
                 transaction.Complete();
@@ -572,6 +744,423 @@ namespace AccountingSystem.API.Controllers
             return activeSuperAdmins == 0;
         }
 
+        private async Task<User?> ResolveCurrentSuperAdminAsync()
+        {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId <= 0)
+            {
+                return null;
+            }
+
+            var actor = await _context.Users
+                .IgnoreQueryFilters()
+                .Include(user => user.Role)
+                .FirstOrDefaultAsync(user => user.Id == currentUserId && !user.IsDeleted);
+
+            if (actor?.Role?.Name != "SuperAdmin")
+            {
+                return null;
+            }
+
+            return actor;
+        }
+
+        private async Task<SuperAdminStepUpResult> VerifySensitiveSuperAdminActionAsync(
+            SuperAdminStepUpVerificationDTO? stepUp,
+            string targetType,
+            int targetId,
+            string targetName,
+            string actionName)
+        {
+            if (stepUp == null)
+            {
+                return new SuperAdminStepUpResult(
+                    false,
+                    StatusCodes.Status400BadRequest,
+                    "Step-up verification payload is required.");
+            }
+
+            var actor = await ResolveCurrentSuperAdminAsync();
+            if (actor == null)
+            {
+                return new SuperAdminStepUpResult(false, StatusCodes.Status403Forbidden, "Access denied.");
+            }
+
+            var sanitizedReason = SanitizeReasonForAudit(stepUp.Reason);
+            if (string.IsNullOrWhiteSpace(sanitizedReason))
+            {
+                await LogSuperAdminAction(
+                    "SUPERADMIN-STEPUP-FAILED",
+                    targetType,
+                    targetId,
+                    targetName,
+                    string.Empty,
+                    "Failed",
+                    $"Step-up verification failed. Result=ReasonRequired; Action={actionName}; Reason=N/A.");
+                await _context.SaveChangesAsync();
+                return new SuperAdminStepUpResult(false, StatusCodes.Status400BadRequest, "Reason is required for governance audit logging.");
+            }
+
+            if (stepUp.Reason?.Length > MaxStepUpReasonLength)
+            {
+                await LogSuperAdminAction(
+                    "SUPERADMIN-STEPUP-FAILED",
+                    targetType,
+                    targetId,
+                    targetName,
+                    string.Empty,
+                    "Failed",
+                    $"Step-up verification failed. Result=ReasonTooLong; Action={actionName}; Reason={sanitizedReason}.");
+                await _context.SaveChangesAsync();
+                return new SuperAdminStepUpResult(false, StatusCodes.Status400BadRequest, $"Reason must be {MaxStepUpReasonLength} characters or less.");
+            }
+
+            if (string.IsNullOrWhiteSpace(stepUp.CurrentPassword))
+            {
+                await LogSuperAdminAction(
+                    "SUPERADMIN-STEPUP-FAILED",
+                    targetType,
+                    targetId,
+                    targetName,
+                    string.Empty,
+                    "Failed",
+                    $"Step-up verification failed. Result=CurrentPasswordRequired; Action={actionName}; Reason={sanitizedReason}.");
+                await _context.SaveChangesAsync();
+                return new SuperAdminStepUpResult(false, StatusCodes.Status400BadRequest, "Current password is required.");
+            }
+
+            var identityUser = await _identityAccountService.FindByLegacyUserIdAsync(actor.Id);
+            if (identityUser == null)
+            {
+                await LogSuperAdminAction(
+                    "SUPERADMIN-STEPUP-FAILED",
+                    targetType,
+                    targetId,
+                    targetName,
+                    string.Empty,
+                    "Failed",
+                    $"Step-up verification failed. Result=IdentityUnavailable; Action={actionName}; Reason={sanitizedReason}.");
+                await _context.SaveChangesAsync();
+                return new SuperAdminStepUpResult(false, StatusCodes.Status400BadRequest, "Identity verification could not be completed.");
+            }
+
+            if (!await _userManager.CheckPasswordAsync(identityUser, stepUp.CurrentPassword))
+            {
+                await LogSuperAdminAction(
+                    "SUPERADMIN-STEPUP-FAILED",
+                    targetType,
+                    targetId,
+                    targetName,
+                    string.Empty,
+                    "Failed",
+                    $"Step-up verification failed. Result=InvalidCurrentPassword; Action={actionName}; Reason={sanitizedReason}.");
+                await _context.SaveChangesAsync();
+                return new SuperAdminStepUpResult(false, StatusCodes.Status401Unauthorized, "Identity verification failed.");
+            }
+
+            var authenticatorEnabled = await IsAuthenticatorAppEnabledAsync(identityUser);
+            var emailOtpEnabled = await IsEmailOtpEnabledAsync(identityUser);
+            var mfaRequired = authenticatorEnabled || emailOtpEnabled;
+            var stepUpMethod = PasswordOnlyStepUpMethod;
+
+            if (mfaRequired)
+            {
+                var mfaVerification = await VerifyStepUpMfaAsync(stepUp, identityUser, actor.Id, authenticatorEnabled, emailOtpEnabled);
+                if (!mfaVerification.Succeeded)
+                {
+                    await LogSuperAdminAction(
+                        "SUPERADMIN-STEPUP-FAILED",
+                        targetType,
+                        targetId,
+                        targetName,
+                        string.Empty,
+                        "Failed",
+                        $"Step-up verification failed. Result={mfaVerification.FailureReason}; Action={actionName}; Reason={sanitizedReason}; MfaRequired=true; MfaMethod={mfaVerification.StepUpMethod}.");
+                    await _context.SaveChangesAsync();
+                    return new SuperAdminStepUpResult(false, StatusCodes.Status401Unauthorized, "Identity verification failed.");
+                }
+
+                stepUpMethod = mfaVerification.StepUpMethod;
+            }
+
+            await LogSuperAdminAction(
+                "SUPERADMIN-STEPUP-SUCCESS",
+                targetType,
+                targetId,
+                targetName,
+                string.Empty,
+                "Verified",
+                $"Step-up verification passed. Action={actionName}; Reason={sanitizedReason}; MfaRequired={mfaRequired}; MfaMethod={stepUpMethod}.");
+            await _context.SaveChangesAsync();
+
+            return new SuperAdminStepUpResult(
+                true,
+                StatusCodes.Status200OK,
+                string.Empty,
+                sanitizedReason,
+                mfaRequired,
+                stepUpMethod);
+        }
+
+        private async Task<(bool Succeeded, string FailureReason, string StepUpMethod)> VerifyStepUpMfaAsync(
+            SuperAdminStepUpVerificationDTO stepUp,
+            ApplicationUser identityUser,
+            int legacyUserId,
+            bool authenticatorEnabled,
+            bool emailOtpEnabled)
+        {
+            var requestedMethod = NormalizeMfaMethod(stepUp.MfaMethod);
+            var hasMfaCode = !string.IsNullOrWhiteSpace(stepUp.MfaCode);
+            var hasRecoveryCode = !string.IsNullOrWhiteSpace(stepUp.RecoveryCode);
+
+            if (hasRecoveryCode && string.IsNullOrWhiteSpace(requestedMethod))
+            {
+                requestedMethod = MfaLoginMethods.RecoveryCode;
+            }
+
+            if (string.IsNullOrWhiteSpace(requestedMethod))
+            {
+                if (authenticatorEnabled && emailOtpEnabled)
+                {
+                    return (false, "MfaMethodRequired", "Unknown");
+                }
+
+                if (authenticatorEnabled)
+                {
+                    requestedMethod = MfaLoginMethods.AuthenticatorApp;
+                }
+                else if (emailOtpEnabled)
+                {
+                    requestedMethod = MfaLoginMethods.EmailOtp;
+                }
+            }
+
+            if (string.Equals(requestedMethod, MfaLoginMethods.RecoveryCode, StringComparison.Ordinal))
+            {
+                if (!authenticatorEnabled)
+                {
+                    return (false, "RecoveryCodeUnavailable", requestedMethod);
+                }
+
+                if (!hasRecoveryCode)
+                {
+                    return (false, "RecoveryCodeRequired", requestedMethod);
+                }
+
+                var recoveryResult = await RedeemRecoveryCodeAsync(identityUser, stepUp.RecoveryCode);
+                return recoveryResult.Succeeded
+                    ? (true, string.Empty, requestedMethod)
+                    : (false, "InvalidRecoveryCode", requestedMethod);
+            }
+
+            if (string.Equals(requestedMethod, MfaLoginMethods.EmailOtp, StringComparison.Ordinal))
+            {
+                if (!emailOtpEnabled || !await _userManager.IsEmailConfirmedAsync(identityUser))
+                {
+                    return (false, "EmailOtpUnavailable", requestedMethod);
+                }
+
+                if (!hasMfaCode)
+                {
+                    return (false, "EmailOtpCodeRequired", requestedMethod);
+                }
+
+                var verificationResult = _emailOtpChallengeStore.Verify(
+                    BuildSuperAdminEmailOtpChallengeKey(identityUser.Id),
+                    identityUser.Id,
+                    legacyUserId,
+                    stepUp.MfaCode,
+                    GetEmailOtpMaxVerificationAttempts());
+
+                return verificationResult.Succeeded
+                    ? (true, string.Empty, requestedMethod)
+                    : (false, $"EmailOtp{verificationResult.Status}", requestedMethod);
+            }
+
+            if (string.Equals(requestedMethod, MfaLoginMethods.AuthenticatorApp, StringComparison.Ordinal))
+            {
+                if (!authenticatorEnabled)
+                {
+                    return (false, "AuthenticatorUnavailable", requestedMethod);
+                }
+
+                if (!hasMfaCode)
+                {
+                    return (false, "AuthenticatorCodeRequired", requestedMethod);
+                }
+
+                var sanitizedCode = NormalizeAuthenticatorCode(stepUp.MfaCode);
+                if (sanitizedCode.Length != 6 ||
+                    !sanitizedCode.All(char.IsDigit) ||
+                    !await _userManager.VerifyTwoFactorTokenAsync(
+                        identityUser,
+                        _userManager.Options.Tokens.AuthenticatorTokenProvider,
+                        sanitizedCode))
+                {
+                    return (false, "InvalidAuthenticatorCode", requestedMethod);
+                }
+
+                return (true, string.Empty, requestedMethod);
+            }
+
+            return (false, "UnsupportedMfaMethod", string.IsNullOrWhiteSpace(requestedMethod) ? "Unknown" : requestedMethod);
+        }
+
+        private async Task<bool> IsAuthenticatorAppEnabledAsync(ApplicationUser identityUser)
+        {
+            if (!await _userManager.GetTwoFactorEnabledAsync(identityUser))
+            {
+                return false;
+            }
+
+            var authenticatorKey = await _userManager.GetAuthenticatorKeyAsync(identityUser);
+            return !string.IsNullOrWhiteSpace(authenticatorKey);
+        }
+
+        private async Task<bool> IsEmailOtpEnabledAsync(ApplicationUser identityUser)
+        {
+            var value = await _userManager.GetAuthenticationTokenAsync(
+                identityUser,
+                EmailOtpLoginProvider,
+                EmailOtpEnabledTokenName);
+
+            return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeMfaMethod(string? method)
+        {
+            if (string.IsNullOrWhiteSpace(method))
+            {
+                return string.Empty;
+            }
+
+            if (string.Equals(method, MfaLoginMethods.EmailOtp, StringComparison.OrdinalIgnoreCase))
+            {
+                return MfaLoginMethods.EmailOtp;
+            }
+
+            if (string.Equals(method, MfaLoginMethods.RecoveryCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return MfaLoginMethods.RecoveryCode;
+            }
+
+            if (string.Equals(method, MfaLoginMethods.AuthenticatorApp, StringComparison.OrdinalIgnoreCase))
+            {
+                return MfaLoginMethods.AuthenticatorApp;
+            }
+
+            return method.Trim();
+        }
+
+        private static string NormalizeAuthenticatorCode(string code)
+        {
+            return new string((code ?? string.Empty).Where(char.IsDigit).ToArray());
+        }
+
+        private static string NormalizeRecoveryCode(string code)
+        {
+            return new string((code ?? string.Empty)
+                .Where(character => !char.IsWhiteSpace(character) && character != '-')
+                .ToArray());
+        }
+
+        private async Task<IdentityResult> RedeemRecoveryCodeAsync(ApplicationUser identityUser, string recoveryCode)
+        {
+            var trimmedRecoveryCode = recoveryCode.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedRecoveryCode))
+            {
+                return IdentityResult.Failed(new IdentityError
+                {
+                    Code = "InvalidRecoveryCode",
+                    Description = "The recovery code is invalid."
+                });
+            }
+
+            var normalizedRecoveryCode = NormalizeRecoveryCode(trimmedRecoveryCode);
+            var candidates = new[] { trimmedRecoveryCode, normalizedRecoveryCode }
+                .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+                .Distinct(StringComparer.Ordinal);
+
+            IdentityResult? lastResult = null;
+            foreach (var candidate in candidates)
+            {
+                lastResult = await _userManager.RedeemTwoFactorRecoveryCodeAsync(identityUser, candidate);
+                if (lastResult.Succeeded)
+                {
+                    return lastResult;
+                }
+            }
+
+            return lastResult ?? IdentityResult.Failed(new IdentityError
+            {
+                Code = "InvalidRecoveryCode",
+                Description = "The recovery code is invalid."
+            });
+        }
+
+        private static string BuildGovernanceDetails(string summary, string reason, string stepUpMethod, bool mfaRequired)
+        {
+            var details = $"{summary} Reason={reason}; StepUpMethod={stepUpMethod}; MfaRequired={mfaRequired}.";
+            return details.Length <= 500 ? details : details[..500];
+        }
+
+        private static string SanitizeReasonForAudit(string? reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                return string.Empty;
+            }
+
+            var withoutControlCharacters = new string(reason
+                .Where(character => !char.IsControl(character))
+                .ToArray());
+            var normalizedWhitespace = ConsecutiveWhitespaceRegex.Replace(withoutControlCharacters.Trim(), " ");
+            var truncated = normalizedWhitespace.Length <= MaxStepUpReasonLength
+                ? normalizedWhitespace
+                : normalizedWhitespace[..MaxStepUpReasonLength];
+
+            if (SuspiciousReasonValueRegex.IsMatch(truncated))
+            {
+                return "[REDACTED-SENSITIVE-REASON]";
+            }
+
+            return LongTokenLikeValueRegex.Replace(truncated, "[REDACTED]");
+        }
+
+        private static string BuildSuperAdminEmailOtpChallengeKey(int identityUserId)
+        {
+            return $"superadmin-stepup-email:{identityUserId}";
+        }
+
+        private int GetEmailOtpExpirationMinutes()
+        {
+            var configuredValue = _configuration.GetValue<int?>("Mfa:EmailOtpExpirationMinutes");
+            return configuredValue is > 0 ? configuredValue.Value : DefaultEmailOtpExpirationMinutes;
+        }
+
+        private TimeSpan GetEmailOtpExpiration()
+        {
+            return TimeSpan.FromMinutes(GetEmailOtpExpirationMinutes());
+        }
+
+        private TimeSpan GetEmailOtpResendCooldown()
+        {
+            var configuredValue = _configuration.GetValue<int?>("Mfa:EmailOtpResendCooldownSeconds");
+            var seconds = configuredValue is > 0 ? configuredValue.Value : DefaultEmailOtpResendCooldownSeconds;
+            return TimeSpan.FromSeconds(seconds);
+        }
+
+        private int GetEmailOtpMaxVerificationAttempts()
+        {
+            var configuredValue = _configuration.GetValue<int?>("Mfa:EmailOtpMaxVerificationAttempts");
+            return configuredValue is > 0 ? configuredValue.Value : DefaultEmailOtpMaxVerificationAttempts;
+        }
+
+        private static string GenerateEmailOtpCode()
+        {
+            return RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        }
+
         private async Task<bool> TrySendSuperAdminConfirmationEmailAsync(User superAdmin)
         {
             try
@@ -666,6 +1255,14 @@ namespace AccountingSystem.API.Controllers
             _context.SuperAdminAuditLogs.Add(log);
             return Task.CompletedTask;
         }
+
+        private sealed record SuperAdminStepUpResult(
+            bool Succeeded,
+            int StatusCode,
+            string Message,
+            string SanitizedReason = "",
+            bool MfaRequired = false,
+            string StepUpMethod = PasswordOnlyStepUpMethod);
 
         private static TransactionScope CreateTransactionScope()
         {

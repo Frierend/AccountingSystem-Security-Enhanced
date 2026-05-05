@@ -17,21 +17,80 @@ namespace AccountingSystem.API.Tests;
 
 public class SuperAdminControllerTests
 {
+    private const string ActorPassword = "LongPassword123!";
+    private const string DefaultReason = "Backup governance continuity coverage.";
+
     [Fact]
-    public async Task CreateSuperAdmin_WhenValid_ShouldCreateBackupAccountAndAuditEvent()
+    public async Task CreateSuperAdmin_RequiresStepUpPayload()
     {
         var context = TestHelpers.CreateContext();
         using var harness = TestHelpers.CreateIdentityHarness();
-        var controller = CreateController(context, harness, currentUserId: 1);
+        var actor = await SeedSuperAdminAsync(context, harness, "primary-admin@test.com");
+        var controller = CreateController(context, harness, actor.Id);
 
-        await SeedHostSuperAdminAsync(context, currentUserId: 1);
-
-        var result = await controller.CreateSuperAdmin(new CreateSuperAdminDTO
+        var result = await controller.CreateSuperAdmin(new CreateSuperAdminRequestDTO
         {
-            FullName = "Backup Admin",
-            Email = "backup-admin@test.com",
-            Password = "LongPassword123!",
-            ConfirmPassword = "LongPassword123!"
+            SuperAdmin = BuildCreatePayload("backup-admin@test.com"),
+            StepUp = null!
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task CreateSuperAdmin_WhenCurrentPasswordIsWrong_ShouldFailSafely()
+    {
+        var context = TestHelpers.CreateContext();
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var actor = await SeedSuperAdminAsync(context, harness, "primary-admin@test.com");
+        var controller = CreateController(context, harness, actor.Id);
+
+        var result = await controller.CreateSuperAdmin(new CreateSuperAdminRequestDTO
+        {
+            SuperAdmin = BuildCreatePayload("backup-admin@test.com"),
+            StepUp = BuildStepUpPayload(currentPassword: "WrongPassword123!", reason: DefaultReason)
+        });
+
+        result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+
+        (await context.Users.IgnoreQueryFilters().CountAsync()).Should().Be(1);
+        var failedLog = await context.SuperAdminAuditLogs.IgnoreQueryFilters()
+            .SingleAsync(log => log.Action == "SUPERADMIN-STEPUP-FAILED");
+        failedLog.Details.Should().Contain("InvalidCurrentPassword");
+    }
+
+    [Fact]
+    public async Task CreateSuperAdmin_WithoutReason_ShouldFail()
+    {
+        var context = TestHelpers.CreateContext();
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var actor = await SeedSuperAdminAsync(context, harness, "primary-admin@test.com");
+        var controller = CreateController(context, harness, actor.Id);
+
+        var result = await controller.CreateSuperAdmin(new CreateSuperAdminRequestDTO
+        {
+            SuperAdmin = BuildCreatePayload("backup-admin@test.com"),
+            StepUp = BuildStepUpPayload(currentPassword: ActorPassword, reason: "  ")
+        });
+
+        result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+    }
+
+    [Fact]
+    public async Task CreateSuperAdmin_WithValidStepUp_ShouldCreateBackupAccountAndAuditReason()
+    {
+        var context = TestHelpers.CreateContext();
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var actor = await SeedSuperAdminAsync(context, harness, "primary-admin@test.com");
+        var controller = CreateController(context, harness, actor.Id);
+        const string reason = "Create backup SuperAdmin for incident recovery readiness.";
+
+        var result = await controller.CreateSuperAdmin(new CreateSuperAdminRequestDTO
+        {
+            SuperAdmin = BuildCreatePayload("backup-admin@test.com"),
+            StepUp = BuildStepUpPayload(currentPassword: ActorPassword, reason: reason)
         });
 
         result.Should().BeOfType<OkObjectResult>();
@@ -43,14 +102,116 @@ public class SuperAdminControllerTests
         backupUser.Role.Name.Should().Be("SuperAdmin");
         backupUser.Status.Should().Be("Active");
 
-        var identityUser = await harness.IdentityContext.Users.SingleAsync(user => user.LegacyUserId == backupUser.Id);
-        identityUser.EmailConfirmed.Should().BeFalse();
-        identityUser.RequireEmailConfirmation.Should().BeTrue();
-        harness.EmailService.SentConfirmationEmails.Should().ContainSingle(email => email.Email == "backup-admin@test.com");
+        var createAudit = await context.SuperAdminAuditLogs.IgnoreQueryFilters()
+            .SingleAsync(log => log.Action == "SUPERADMIN-CREATE");
+        createAudit.Details.Should().Contain(reason);
+        createAudit.Details.Should().Contain("StepUpMethod=PasswordOnly");
+    }
 
-        var auditLog = await context.SuperAdminAuditLogs.IgnoreQueryFilters().SingleAsync(log => log.Action == "SUPERADMIN-CREATE");
-        auditLog.TargetType.Should().Be("SuperAdminAccount");
-        auditLog.Details.Should().NotContain("LongPassword123!");
+    [Fact]
+    public async Task CreateSuperAdmin_WhenActorHasMfaEnabled_ShouldRequireValidMfa()
+    {
+        var context = TestHelpers.CreateContext();
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var actor = await SeedSuperAdminAsync(context, harness, "primary-admin@test.com");
+        var controller = CreateController(context, harness, actor.Id);
+
+        await EnableAuthenticatorMfaAsync(harness, actor.Id);
+
+        var missingMfaResult = await controller.CreateSuperAdmin(new CreateSuperAdminRequestDTO
+        {
+            SuperAdmin = BuildCreatePayload("backup-admin@test.com"),
+            StepUp = BuildStepUpPayload(currentPassword: ActorPassword, reason: DefaultReason)
+        });
+
+        missingMfaResult.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+    }
+
+    [Fact]
+    public async Task UpdateSuperAdminStatus_RequiresStepUpPayload()
+    {
+        var context = TestHelpers.CreateContext();
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var actor = await SeedSuperAdminAsync(context, harness, "actor@test.com");
+        var target = await SeedSuperAdminAsync(context, harness, "target@test.com");
+        var controller = CreateController(context, harness, actor.Id, actor.Email);
+
+        var result = await controller.UpdateSuperAdminStatus(target.Id, new UpdateSuperAdminStatusRequestDTO
+        {
+            Status = "Blocked",
+            StepUp = null!
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task UpdateSuperAdminStatus_WithWrongPassword_ShouldFail()
+    {
+        var context = TestHelpers.CreateContext();
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var actor = await SeedSuperAdminAsync(context, harness, "actor@test.com");
+        var target = await SeedSuperAdminAsync(context, harness, "target@test.com");
+        var controller = CreateController(context, harness, actor.Id, actor.Email);
+
+        var result = await controller.UpdateSuperAdminStatus(target.Id, new UpdateSuperAdminStatusRequestDTO
+        {
+            Status = "Blocked",
+            StepUp = BuildStepUpPayload("WrongPassword123!", DefaultReason)
+        });
+
+        result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+
+        var reloaded = await context.Users.IgnoreQueryFilters().SingleAsync(user => user.Id == target.Id);
+        reloaded.Status.Should().Be("Active");
+    }
+
+    [Fact]
+    public async Task UpdateSuperAdminStatus_WithoutReason_ShouldFail()
+    {
+        var context = TestHelpers.CreateContext();
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var actor = await SeedSuperAdminAsync(context, harness, "actor@test.com");
+        var target = await SeedSuperAdminAsync(context, harness, "target@test.com");
+        var controller = CreateController(context, harness, actor.Id, actor.Email);
+
+        var result = await controller.UpdateSuperAdminStatus(target.Id, new UpdateSuperAdminStatusRequestDTO
+        {
+            Status = "Blocked",
+            StepUp = BuildStepUpPayload(ActorPassword, " ")
+        });
+
+        result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+    }
+
+    [Fact]
+    public async Task UpdateSuperAdminStatus_WithValidStepUp_ShouldSucceed()
+    {
+        var context = TestHelpers.CreateContext();
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var actor = await SeedSuperAdminAsync(context, harness, "actor@test.com");
+        var target = await SeedSuperAdminAsync(context, harness, "target@test.com");
+        var controller = CreateController(context, harness, actor.Id, actor.Email);
+        const string reason = "Disable account pending security review.";
+
+        var result = await controller.UpdateSuperAdminStatus(target.Id, new UpdateSuperAdminStatusRequestDTO
+        {
+            Status = "Blocked",
+            StepUp = BuildStepUpPayload(ActorPassword, reason)
+        });
+
+        result.Should().BeOfType<OkObjectResult>();
+
+        var reloaded = await context.Users.IgnoreQueryFilters().SingleAsync(user => user.Id == target.Id);
+        reloaded.Status.Should().Be("Blocked");
+        reloaded.IsActive.Should().BeFalse();
+
+        var auditLog = await context.SuperAdminAuditLogs.IgnoreQueryFilters()
+            .SingleAsync(log => log.Action == "SUPERADMIN-DISABLE");
+        auditLog.Details.Should().Contain(reason);
     }
 
     [Fact]
@@ -58,34 +219,130 @@ public class SuperAdminControllerTests
     {
         var context = TestHelpers.CreateContext();
         using var harness = TestHelpers.CreateIdentityHarness();
-        var controller = CreateController(context, harness, currentUserId: 99);
+        var target = await SeedSuperAdminAsync(context, harness, "primary-admin@test.com");
+        var actor = await SeedSuperAdminAsync(context, harness, "actor@test.com");
+        var controller = CreateController(context, harness, actor.Id, actor.Email);
 
-        var superAdmin = await SeedHostSuperAdminAsync(context, currentUserId: 1);
+        actor.Status = "Blocked";
+        actor.IsActive = false;
+        await context.SaveChangesAsync();
 
-        var result = await controller.UpdateSuperAdminStatus(
-            superAdmin.Id,
-            new UpdateUserStatusDTO { Status = "Blocked" });
+        var result = await controller.UpdateSuperAdminStatus(target.Id, new UpdateSuperAdminStatusRequestDTO
+        {
+            Status = "Blocked",
+            StepUp = BuildStepUpPayload(ActorPassword, "Attempt block final admin.")
+        });
 
         result.Should().BeOfType<BadRequestObjectResult>();
 
-        var reloadedSuperAdmin = await context.Users.IgnoreQueryFilters().SingleAsync(user => user.Id == superAdmin.Id);
-        reloadedSuperAdmin.Status.Should().Be("Active");
-        reloadedSuperAdmin.IsActive.Should().BeTrue();
+        var reloadedTarget = await context.Users.IgnoreQueryFilters().SingleAsync(user => user.Id == target.Id);
+        reloadedTarget.Status.Should().Be("Active");
+        reloadedTarget.IsActive.Should().BeTrue();
 
-        var auditLog = await context.SuperAdminAuditLogs.IgnoreQueryFilters().SingleAsync();
-        auditLog.Action.Should().Be("SUPERADMIN-LAST-ADMIN-PROTECTION");
-        auditLog.TargetType.Should().Be("SuperAdminAccount");
+        context.SuperAdminAuditLogs.IgnoreQueryFilters()
+            .Any(log => log.Action == "SUPERADMIN-LAST-ADMIN-PROTECTION")
+            .Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task NonSuperAdminActor_CannotCreateOrDisableSuperAdmin()
+    {
+        var context = TestHelpers.CreateContext();
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var target = await SeedSuperAdminAsync(context, harness, "target@test.com");
+        var controller = CreateController(context, harness, currentUserId: 999, currentUserEmail: "tenant-admin@test.com", role: "Admin");
+
+        var createResult = await controller.CreateSuperAdmin(new CreateSuperAdminRequestDTO
+        {
+            SuperAdmin = BuildCreatePayload("backup-admin@test.com"),
+            StepUp = BuildStepUpPayload(ActorPassword, DefaultReason)
+        });
+
+        var disableResult = await controller.UpdateSuperAdminStatus(target.Id, new UpdateSuperAdminStatusRequestDTO
+        {
+            Status = "Blocked",
+            StepUp = BuildStepUpPayload(ActorPassword, DefaultReason)
+        });
+
+        createResult.Should().BeOfType<ForbidResult>();
+        disableResult.Should().BeOfType<ForbidResult>();
+    }
+
+    [Fact]
+    public async Task SuperAdminAuditLogs_ShouldExcludeSensitiveStepUpDataAndIncludeSafeReason()
+    {
+        var context = TestHelpers.CreateContext();
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var actor = await SeedSuperAdminAsync(context, harness, "primary-admin@test.com");
+        var controller = CreateController(context, harness, actor.Id);
+        var identityUser = await EnableAuthenticatorMfaAsync(harness, actor.Id);
+        var authenticatorKey = await harness.UserManager.GetAuthenticatorKeyAsync(identityUser);
+        var mfaCode = TestHelpers.GenerateAuthenticatorCode(authenticatorKey!);
+        var recoveryCodeProbe = "RECOVERY-SHOULD-NOT-LOG";
+        const string reason = "Provision additional trusted SuperAdmin for emergency operations.";
+
+        var result = await controller.CreateSuperAdmin(new CreateSuperAdminRequestDTO
+        {
+            SuperAdmin = BuildCreatePayload("backup-admin@test.com"),
+            StepUp = new SuperAdminStepUpVerificationDTO
+            {
+                CurrentPassword = ActorPassword,
+                MfaMethod = MfaLoginMethods.AuthenticatorApp,
+                MfaCode = mfaCode,
+                RecoveryCode = recoveryCodeProbe,
+                Reason = reason
+            }
+        });
+
+        result.Should().BeOfType<OkObjectResult>();
+
+        var allDetails = string.Join(
+            Environment.NewLine,
+            await context.SuperAdminAuditLogs.IgnoreQueryFilters().Select(log => log.Details).ToListAsync());
+
+        allDetails.Should().Contain(reason);
+        allDetails.Should().NotContain(ActorPassword);
+        allDetails.Should().NotContain(mfaCode);
+        allDetails.Should().NotContain(recoveryCodeProbe);
+        allDetails.Should().NotContain("captcha");
+        allDetails.ToLowerInvariant().Should().NotContain("jwt");
+        allDetails.ToLowerInvariant().Should().NotContain("token");
+    }
+
+    private static CreateSuperAdminDTO BuildCreatePayload(string email)
+    {
+        return new CreateSuperAdminDTO
+        {
+            FullName = "Backup Admin",
+            Email = email,
+            Password = "BackupPassword123!",
+            ConfirmPassword = "BackupPassword123!"
+        };
+    }
+
+    private static SuperAdminStepUpVerificationDTO BuildStepUpPayload(string currentPassword, string reason)
+    {
+        return new SuperAdminStepUpVerificationDTO
+        {
+            CurrentPassword = currentPassword,
+            Reason = reason
+        };
     }
 
     private static SuperAdminController CreateController(
         AccountingDbContext context,
         IdentityTestHarness harness,
-        int currentUserId)
+        int currentUserId,
+        string currentUserEmail = "primary-admin@test.com",
+        string role = "SuperAdmin")
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["AppUrls:ClientBaseUrl"] = "https://client.example.test"
+                ["AppUrls:ClientBaseUrl"] = "https://client.example.test",
+                ["Mfa:EmailOtpExpirationMinutes"] = "5",
+                ["Mfa:EmailOtpMaxVerificationAttempts"] = "3",
+                ["Mfa:EmailOtpResendCooldownSeconds"] = "60"
             })
             .Build();
 
@@ -93,8 +350,8 @@ public class SuperAdminControllerTests
         httpContext.User = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
             new Claim("UserId", currentUserId.ToString()),
-            new Claim("unique_name", "primary-admin@test.com"),
-            new Claim(ClaimTypes.Role, "SuperAdmin")
+            new Claim("unique_name", currentUserEmail),
+            new Claim(ClaimTypes.Role, role)
         }, "Test"));
         httpContext.Request.Headers.Origin = "https://client.example.test";
 
@@ -105,6 +362,7 @@ public class SuperAdminControllerTests
             harness.IdentityContext,
             harness.AccountService,
             harness.EmailService,
+            new AccountingSystem.API.Services.EmailOtpChallengeStore(),
             harness.UserManager,
             configuration)
         {
@@ -115,21 +373,67 @@ public class SuperAdminControllerTests
         };
     }
 
-    private static async Task<User> SeedHostSuperAdminAsync(AccountingDbContext context, int currentUserId)
+    private static async Task<User> SeedSuperAdminAsync(
+        AccountingDbContext context,
+        IdentityTestHarness harness,
+        string email)
     {
-        var role = new Role { Id = 4, Name = "SuperAdmin" };
-        var company = new Company { Id = 1, Name = "SaaS Operations", IsActive = true, Status = "Active" };
-        var superAdmin = TestHelpers.CreateUser(
-            role,
-            company.Id,
-            currentUserId == 1 ? "primary-admin@test.com" : $"primary-admin-{currentUserId}@test.com",
-            "LongPassword123!");
+        var role = await EnsureRoleAsync(context);
+        var company = await EnsureHostCompanyAsync(context);
 
-        context.Roles.Add(role);
-        context.Companies.Add(company);
+        var superAdmin = TestHelpers.CreateUser(role, company.Id, email, ActorPassword);
         context.Users.Add(superAdmin);
         await context.SaveChangesAsync();
 
+        await harness.AccountService.EnsureProvisionedAsync(
+            TestHelpers.CreateIdentitySnapshot(
+                superAdmin,
+                role.Name,
+                requireEmailConfirmation: true,
+                emailConfirmed: true),
+            ActorPassword);
+
         return superAdmin;
+    }
+
+    private static async Task<Role> EnsureRoleAsync(AccountingDbContext context)
+    {
+        var role = await context.Roles.IgnoreQueryFilters().FirstOrDefaultAsync(item => item.Name == "SuperAdmin");
+        if (role != null)
+        {
+            return role;
+        }
+
+        role = new Role { Name = "SuperAdmin" };
+        context.Roles.Add(role);
+        await context.SaveChangesAsync();
+        return role;
+    }
+
+    private static async Task<Company> EnsureHostCompanyAsync(AccountingDbContext context)
+    {
+        var company = await context.Companies.IgnoreQueryFilters().FirstOrDefaultAsync(item => item.Name == "SaaS Operations");
+        if (company != null)
+        {
+            return company;
+        }
+
+        company = new Company
+        {
+            Name = "SaaS Operations",
+            IsActive = true,
+            Status = "Active"
+        };
+        context.Companies.Add(company);
+        await context.SaveChangesAsync();
+        return company;
+    }
+
+    private static async Task<ApplicationUser> EnableAuthenticatorMfaAsync(IdentityTestHarness harness, int legacyUserId)
+    {
+        var identityUser = await harness.IdentityContext.Users.SingleAsync(user => user.LegacyUserId == legacyUserId);
+        (await harness.UserManager.ResetAuthenticatorKeyAsync(identityUser)).Succeeded.Should().BeTrue();
+        (await harness.UserManager.SetTwoFactorEnabledAsync(identityUser, true)).Succeeded.Should().BeTrue();
+        return identityUser;
     }
 }

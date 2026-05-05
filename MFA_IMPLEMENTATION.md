@@ -17,6 +17,7 @@ Supported email factor:
 - **Implemented:** Email OTP MFA setup, login challenge, resend cooldown, verification attempts, and disable flow.
 - **Implemented:** Authenticator App MFA and Email OTP MFA can be enabled or disabled independently from the profile.
 - **Implemented:** Profile Email OTP setup clearly blocks unconfirmed email and offers resend confirmation before enabling Email OTP MFA.
+- **Implemented:** Sensitive SuperAdmin governance actions (create/enable/disable SuperAdmin accounts) use step-up verification with password re-entry and MFA when enabled.
 - **Known Limitation:** SMS OTP and push MFA are not implemented.
 - **Known Limitation:** Email OTP challenges are stored in memory for demo use; pending codes are lost if the API restarts.
 - **Known Limitation:** remember-device / remember-browser trust flow is not implemented.
@@ -73,6 +74,16 @@ Sensitive actions require exactly one re-authentication factor:
 - current password, or
 - current authenticator code, or
 - a recovery code
+
+### 5. SuperAdmin governance step-up
+
+- Sensitive SuperAdmin governance actions require:
+  - current SuperAdmin password re-entry
+  - MFA verification when MFA is enabled on the acting SuperAdmin account
+  - required reason/justification for governance audit logging
+- If Authenticator App MFA is enabled, step-up accepts authenticator code or recovery code.
+- If Email OTP MFA is enabled, step-up can use Email OTP after requesting a step-up email code.
+- If no MFA is enabled for the acting SuperAdmin, password re-entry is still required and the UI warns to enable MFA for stronger protection.
 
 ## Setup Steps
 
@@ -137,6 +148,7 @@ Rate-limit configuration was added for:
 - `POST /api/auth/mfa/email/setup`
 - `POST /api/auth/mfa/email/verify`
 - `POST /api/auth/mfa/email/disable`
+- `POST /api/superadmin/stepup/email/send`
 
 ## Security Notes
 
@@ -148,5 +160,8 @@ Rate-limit configuration was added for:
 - Disabling Authenticator App MFA does not disable Email OTP MFA, and disabling Email OTP MFA does not disable Authenticator App MFA.
 - SuperAdmin has no MFA exemption in this phase. If MFA is enabled on the account, the second step is required.
 - SuperAdmin can enable Email OTP MFA after confirming email, and this does not require Authenticator App MFA to be enabled.
+- Creating, enabling, and disabling SuperAdmin accounts is treated as sensitive governance and requires step-up verification plus reason/justification logging.
+- Backup SuperAdmin accounts are supported, and the last active SuperAdmin account cannot be disabled or deleted.
+- If a SuperAdmin account is suspected to be compromised, a trusted backup SuperAdmin should review governance logs, disable suspicious accounts, reset credentials, and rotate affected secrets as needed.
 - **Known Limitation:** MFA is currently optional and policy-based enforcement is not yet implemented across all role scenarios.
 - **Recommended Improvement:** add administrative reporting dashboards for MFA enrollment and recovery-code events.

@@ -1,0 +1,247 @@
+@using AccountingSystem.Client.Services
+@using AccountingSystem.Shared.DTOs
+@using MudBlazor
+@inject SuperAdminService SuperAdminService
+@inject ISnackbar Snackbar
+
+<MudDialog Class="shadcn-dialog-root">
+    <DialogContent>
+        <div class="d-flex flex-column gap-2 py-2">
+            <MudText Typo="Typo.h6" Style="font-weight: 600; letter-spacing: -0.025em;">Sensitive SuperAdmin Action</MudText>
+            <MudText Typo="Typo.body2" Style="color: var(--text-muted);">
+                This is a sensitive SuperAdmin action. Please verify your identity before continuing.
+            </MudText>
+            <MudText Typo="Typo.body2" Style="color: var(--text-muted);">
+                @ActionDescription @(!string.IsNullOrWhiteSpace(TargetDisplay) ? $"({TargetDisplay})" : string.Empty)
+            </MudText>
+        </div>
+
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-3">
+            Reason is required for governance audit logging.
+        </MudAlert>
+
+        @if (!IsMfaEnabled)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-3">
+                For stronger protection, enable MFA on SuperAdmin accounts.
+            </MudAlert>
+        }
+
+        <EditForm Model="@model" OnValidSubmit="SubmitAsync">
+            <DataAnnotationsValidator />
+            <MudStack Spacing="2">
+                <MudTextField Label="Current SuperAdmin password"
+                              @bind-Value="model.CurrentPassword"
+                              For="@(() => model.CurrentPassword)"
+                              InputType="InputType.Password"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="shadcn-input" />
+
+                @if (IsMfaEnabled)
+                {
+                    <MudSelect T="string"
+                               Label="MFA method"
+                               @bind-Value="selectedMfaMethod"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Class="shadcn-input">
+                        @foreach (var method in GetMfaMethods())
+                        {
+                            <MudSelectItem T="string" Value="@method.Value">@method.Label</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    @if (selectedMfaMethod == MfaLoginMethods.RecoveryCode)
+                    {
+                        <MudTextField Label="Recovery code"
+                                      @bind-Value="model.RecoveryCode"
+                                      InputType="InputType.Password"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Class="shadcn-input" />
+                    }
+                    else if (!string.IsNullOrWhiteSpace(selectedMfaMethod))
+                    {
+                        <MudTextField Label="MFA code"
+                                      @bind-Value="model.MfaCode"
+                                      InputType="InputType.Password"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Class="shadcn-input" />
+
+                        @if (selectedMfaMethod == MfaLoginMethods.EmailOtp)
+                        {
+                            <MudButton Variant="Variant.Outlined"
+                                       StartIcon="@Icons.Material.Outlined.Email"
+                                       Disabled="@isSendingEmailOtp"
+                                       OnClick="SendEmailOtpAsync">
+                                @(isSendingEmailOtp ? "Sending..." : "Send Email OTP")
+                            </MudButton>
+                        }
+                    }
+                }
+
+                <MudTextField Label="Reason / justification"
+                              @bind-Value="model.Reason"
+                              For="@(() => model.Reason)"
+                              Placeholder="Reason for creating/disabling this SuperAdmin"
+                              Lines="3"
+                              MaxLength="240"
+                              Counter="240"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="shadcn-input" />
+
+                @if (!string.IsNullOrWhiteSpace(validationMessage))
+                {
+                    <MudText Typo="Typo.caption" Style="color: var(--color-destructive);">
+                        @validationMessage
+                    </MudText>
+                }
+            </MudStack>
+
+            <div class="d-flex justify-end gap-2 mt-4">
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Secondary"
+                           Disabled="@isSubmitting"
+                           OnClick="Cancel">
+                    Cancel
+                </MudButton>
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="@isSubmitting">
+                    @(isSubmitting ? "Verifying..." : "Verify and Continue")
+                </MudButton>
+            </div>
+        </EditForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public string ActionDescription { get; set; } = string.Empty;
+
+    [Parameter]
+    public string TargetDisplay { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool IsAuthenticatorAppEnabled { get; set; }
+
+    [Parameter]
+    public bool IsEmailOtpEnabled { get; set; }
+
+    private readonly SuperAdminStepUpVerificationDTO model = new();
+    private bool isSubmitting;
+    private bool isSendingEmailOtp;
+    private string selectedMfaMethod = string.Empty;
+    private string validationMessage = string.Empty;
+
+    private bool IsMfaEnabled => IsAuthenticatorAppEnabled || IsEmailOtpEnabled;
+
+    protected override void OnInitialized()
+    {
+        if (IsAuthenticatorAppEnabled)
+        {
+            selectedMfaMethod = MfaLoginMethods.AuthenticatorApp;
+        }
+        else if (IsEmailOtpEnabled)
+        {
+            selectedMfaMethod = MfaLoginMethods.EmailOtp;
+        }
+    }
+
+    private IEnumerable<(string Value, string Label)> GetMfaMethods()
+    {
+        if (IsAuthenticatorAppEnabled)
+        {
+            yield return (MfaLoginMethods.AuthenticatorApp, "Authenticator App");
+            yield return (MfaLoginMethods.RecoveryCode, "Recovery Code");
+        }
+
+        if (IsEmailOtpEnabled)
+        {
+            yield return (MfaLoginMethods.EmailOtp, "Email OTP");
+        }
+    }
+
+    private async Task SendEmailOtpAsync()
+    {
+        isSendingEmailOtp = true;
+        try
+        {
+            await SuperAdminService.SendStepUpEmailOtpAsync();
+            Snackbar.Add("Verification code sent to your email.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            isSendingEmailOtp = false;
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        validationMessage = string.Empty;
+        model.MfaMethod = selectedMfaMethod;
+
+        if (IsMfaEnabled)
+        {
+            if (string.IsNullOrWhiteSpace(selectedMfaMethod))
+            {
+                validationMessage = "Choose an MFA method.";
+                return;
+            }
+
+            if (selectedMfaMethod == MfaLoginMethods.RecoveryCode)
+            {
+                model.MfaCode = string.Empty;
+                if (string.IsNullOrWhiteSpace(model.RecoveryCode))
+                {
+                    validationMessage = "Recovery code is required.";
+                    return;
+                }
+            }
+            else
+            {
+                model.RecoveryCode = string.Empty;
+                if (string.IsNullOrWhiteSpace(model.MfaCode))
+                {
+                    validationMessage = "MFA code is required.";
+                    return;
+                }
+            }
+        }
+        else
+        {
+            model.MfaMethod = string.Empty;
+            model.MfaCode = string.Empty;
+            model.RecoveryCode = string.Empty;
+        }
+
+        isSubmitting = true;
+        var payload = new SuperAdminStepUpVerificationDTO
+        {
+            CurrentPassword = model.CurrentPassword,
+            MfaMethod = model.MfaMethod,
+            MfaCode = model.MfaCode,
+            RecoveryCode = model.RecoveryCode,
+            Reason = model.Reason
+        };
+
+        await Task.Yield();
+        MudDialog.Close(DialogResult.Ok(payload));
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

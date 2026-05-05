@@ -12,9 +12,10 @@ The following controls are implemented in the current codebase:
 6. Sanitized non-auth request logging in middleware for state-changing operations.
 7. Optional independently managed Authenticator App MFA, Email OTP MFA, and recovery codes.
 8. PayMongo webhook HMAC signature validation with replay-window checking.
-9. Google reCAPTCHA v2 Checkbox for registration and every normal login attempt, with public site key and server secret read from configuration.
-10. Backup SuperAdmin management with strong-password creation, email confirmation flow, and last-active-SuperAdmin protection.
-11. CI security-tooling evidence via GitHub Actions:
+9. Google reCAPTCHA v2 Checkbox for registration and every normal login attempt, with a client-side public site key and server secret read from configuration.
+10. Backup SuperAdmin management with strong-password creation, email confirmation flow, and last-active-SuperAdmin protection (the last active SuperAdmin cannot be disabled or deleted).
+11. Step-up verification for sensitive SuperAdmin governance actions (create/enable/disable SuperAdmin accounts) using password re-entry, MFA when enabled, and required reason/justification.
+12. CI security-tooling evidence via GitHub Actions:
    - `.github/workflows/security-tooling-evidence.yml` (build/test, dependency vulnerability report artifact, gitleaks report-first secret scan)
    - `.github/workflows/codeql.yml` (CodeQL static analysis for C#)
 
@@ -26,6 +27,7 @@ The following controls are implemented in the current codebase:
 - Super-admin governance actions are captured in `SuperAdminAuditLogs`.
 - SuperAdmin-account login failures, lockouts, CAPTCHA-required events, MFA challenges, and successful logins are mirrored into `SuperAdminAuditLogs`.
 - Backup SuperAdmin creation, enable/disable actions, and attempts to disable the last active SuperAdmin are captured in `SuperAdminAuditLogs`.
+- Step-up verification outcomes for sensitive SuperAdmin governance actions are captured in `SuperAdminAuditLogs` with required reason/justification and safe metadata only.
 - The seeded/demo bootstrap SuperAdmin is email-confirmed for MFA demonstration; backup SuperAdmins follow the normal confirmation workflow.
 - OTP values, recovery codes, CAPTCHA tokens, passwords, JWTs, and secrets are not written to audit details.
 - Development email fallback logs reset/confirmation links when SMTP is not configured.
@@ -47,6 +49,7 @@ The following controls are implemented in the current codebase:
 - Rotate exposed secrets (JWT, SMTP, PayMongo, reCAPTCHA, database credentials) as needed.
 - Temporarily disable vulnerable flows when required.
 - Block or restrict compromised accounts and tenant access where appropriate.
+- Use a trusted backup SuperAdmin account to review governance logs, disable suspicious SuperAdmin accounts, and coordinate privileged-account credential resets.
 
 ### 4. Recovery
 
@@ -82,7 +85,7 @@ The following controls are implemented in the current codebase:
 - [x] SuperAdmin-account auth event mirroring
 - [x] JWT validation configuration and middleware path
 - [x] Registration and always-on login reCAPTCHA
-- [x] Configuration-based reCAPTCHA public site key and server-only secret key handling
+- [x] Client-side public reCAPTCHA site key and server-only secret key handling
 - [x] Independent Authenticator App and Email OTP MFA management
 - [x] Backup SuperAdmin support and last-active protection
 - [x] CI security tooling evidence (build/test, dependency scan report, secret scan evidence, CodeQL)

@@ -622,6 +622,7 @@
 </style>
 
 @code {
+    private const string SiteKey = "6LeREs0sAAAAALW-ePzb9R273YULYfKjGcg2SWr8";
     private const string RecaptchaContainerId = "recaptcha_container";
 
     private CompanyRegisterDTO registerModel = new CompanyRegisterDTO();
@@ -629,7 +630,6 @@
     private bool logoLoaded = false;
     private bool showTermsModal = false;
     private string errorMessage = "";
-    private string recaptchaSiteKey = string.Empty;
 
     // Password visibility state
     private bool isShowPassword = false;
@@ -644,8 +644,7 @@
             var isCaptchaRendered = false;
             try
             {
-                var siteKey = await GetRecaptchaSiteKeyAsync();
-                isCaptchaRendered = await JS.InvokeAsync<bool>("renderRecaptcha", RecaptchaContainerId, siteKey);
+                isCaptchaRendered = await JS.InvokeAsync<bool>("renderRecaptcha", RecaptchaContainerId, SiteKey);
             }
             catch (Exception ex)
             {
@@ -658,17 +657,6 @@
                 StateHasChanged();
             }
         }
-    }
-
-    private async Task<string> GetRecaptchaSiteKeyAsync()
-    {
-        if (!string.IsNullOrWhiteSpace(recaptchaSiteKey))
-        {
-            return recaptchaSiteKey;
-        }
-
-        recaptchaSiteKey = (await AuthService.GetRecaptchaConfig()).SiteKey;
-        return recaptchaSiteKey;
     }
 
     private void OnLogoLoaded()

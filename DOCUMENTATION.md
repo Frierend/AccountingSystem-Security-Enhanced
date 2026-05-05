@@ -126,7 +126,7 @@ Authorization Required: Mixed (public + authenticated)
 Endpoints:
 
 - **[GET] /api/auth/recaptcha/config**
-  - Description: Returns only the public reCAPTCHA site key from API configuration.
+  - Description: Compatibility endpoint that returns only the public reCAPTCHA site key from API configuration. Current Blazor login and registration pages use a client-side public site key constant and do not depend on this endpoint before rendering.
   - Response: `RecaptchaConfigDTO`.
   - Status Codes: `200`, `503`.
 - **[POST] /api/auth/login**
@@ -335,9 +335,10 @@ Endpoints:
 - **[GET] /api/superadmin/superadmins**
 - **[POST] /api/superadmin/superadmins**
 - **[PUT] /api/superadmin/superadmins/{id}/status**
+- **[POST] /api/superadmin/stepup/email/send**
 - **[GET] /api/superadmin/audit-logs**
 
-Backup SuperAdmin support allows an existing SuperAdmin to create another System Administrator account with a strong password and email confirmation flow. The API prevents disabling the last active SuperAdmin account and logs `SUPERADMIN-CREATE`, `SUPERADMIN-DISABLE`, `SUPERADMIN-ENABLE`, and `SUPERADMIN-LAST-ADMIN-PROTECTION` governance events.
+Backup SuperAdmin support allows an existing SuperAdmin to create another System Administrator account with a strong password and email confirmation flow. Creating/enabling/disabling SuperAdmin accounts is treated as a sensitive governance action and requires step-up verification (current password re-entry, MFA verification when enabled, and required reason/justification). The API prevents disabling or deleting the last active SuperAdmin account and logs governance events including `SUPERADMIN-CREATE`, `SUPERADMIN-DISABLE`, `SUPERADMIN-ENABLE`, `SUPERADMIN-LAST-ADMIN-PROTECTION`, `SUPERADMIN-STEPUP-SUCCESS`, and `SUPERADMIN-STEPUP-FAILED`.
 
 ---
 
@@ -354,7 +355,7 @@ Backup SuperAdmin support allows an existing SuperAdmin to create another System
 | AP            | `VendorDTO`, `CreateVendorDTO`, `UpdateVendorDTO`, `BillDTO`, `CreateBillDTO`                                                          |
 | AR            | `CustomerDTO`, `CreateCustomerDTO`, `UpdateCustomerDTO`, `InvoiceDTO`, `CreateInvoiceDTO`                                              |
 | Payments      | `RecordPaymentDTO`, `PaymentHistoryDTO`, `CreateSourceDTO`, `PaymentSourceResponseDTO`, PayMongo request/response/webhook DTOs         |
-| Audit         | `AuditLogDTO`, `SuperAdminAuditLogDTO`, `SystemDashboardDTO`, `MonthlyActivityDTO`, `TenantDTO`, `UpdateCompanyStatusDTO`, `SuperAdminAccountDTO`, `CreateSuperAdminDTO` |
+| Audit         | `AuditLogDTO`, `SuperAdminAuditLogDTO`, `SystemDashboardDTO`, `MonthlyActivityDTO`, `TenantDTO`, `UpdateCompanyStatusDTO`, `SuperAdminAccountDTO`, `CreateSuperAdminDTO`, `SuperAdminStepUpVerificationDTO`, `CreateSuperAdminRequestDTO`, `UpdateSuperAdminStatusRequestDTO` |
 | External data | `WorldBankDataPoint`, `WorldBankIndicator`, `FrankfurterResponse`, `FrankfurterRates`                                                  |
 
 ### 3.2 Mapping relationships (DTO ↔ Entity)
@@ -509,7 +510,7 @@ Purpose: Multi-tenant governance and platform monitoring.
 
 - `SystemDashboard`: platform KPIs/trends/recent actions.
 - `TenantManager`: list tenants + status management.
-- `GlobalUserManager`: global tenant user status management plus backup SuperAdmin listing/creation/status management with last-active protection.
+- `GlobalUserManager`: global tenant user status management plus backup SuperAdmin listing/creation/status management with last-active protection and step-up verification for sensitive SuperAdmin governance actions.
 - `AdminAuditLogs`: SuperAdmin action history with tenant-audit-style filters, local timestamp formatting, and clickable details dialog.
   Connected API Endpoints: `/api/superadmin/*`.  
   Data Models Used: `SystemDashboardDTO`, `TenantDTO`, `GlobalUserDTO`, `SuperAdminAuditLogDTO`, status update DTOs.
@@ -596,7 +597,7 @@ Both API and Client include project references to `AccountingSystem.Shared`, cre
 - **Database:** Microsoft SQL Server accessed through EF Core 8
 - **Authentication:** JWT bearer tokens with role-based authorization
 - **Email Delivery:** SMTP via `SmtpClient` (Gmail App Password compatible when Gmail SMTP is used)
-- **Bot Protection:** Google reCAPTCHA v2 Checkbox in company registration flow and always-on login reCAPTCHA required for every non-locked login attempt. The public site key comes from API configuration, and the secret key remains server-side.
+- **Bot Protection:** Google reCAPTCHA v2 Checkbox in company registration flow and always-on login reCAPTCHA required for every non-locked login attempt. The public site key is client-side and may appear in the Blazor client, and the secret key remains server-side.
 - **Payment Integration:** PayMongo source and redirect flow (test-mode usage for local/academic demonstration)
 - **Additional libraries:** MudBlazor, Blazored.LocalStorage, QuestPDF, Swashbuckle
 
@@ -621,7 +622,7 @@ Default lockout settings in configuration:
 
 The login UI intentionally does not show exact attempts left or a lockout countdown. This limits attacker feedback while still showing generic user-friendly errors for CAPTCHA and temporary lockout states.
 
-Login reCAPTCHA is shown by default and required before credential processing. Account lockout still applies after the configured failed attempts. Login and registration request the public site key from `GET /api/auth/recaptcha/config`; no reCAPTCHA secret is exposed to the client.
+Login reCAPTCHA is shown by default and required before credential processing. Account lockout still applies after the configured failed attempts. Login and registration render with a client-side public site key constant; no reCAPTCHA secret is exposed to the client.
 
 Rate limiting is configured per auth endpoint (login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, MFA management).
 
@@ -639,6 +640,7 @@ Implemented features:
   - Email OTP MFA to a confirmed email address
   - Authenticator App MFA and Email OTP MFA are independently managed from the user profile
   - Unconfirmed accounts, including SuperAdmin accounts, can resend confirmation before enabling Email OTP MFA
+  - Sensitive SuperAdmin governance actions require step-up verification with password re-entry and MFA when enabled
 - Registration protected by Google reCAPTCHA token verification
 - Login protected by Google reCAPTCHA token verification on every normal login attempt
 
@@ -669,7 +671,8 @@ Password handling status:
 - Tenant audit logs display System and Security categories
 - Super-admin actions are recorded in `SuperAdminAuditLogs`
 - SuperAdmin-account login failures, lockouts, CAPTCHA-required events, MFA challenges, and successful logins are mirrored into SuperAdmin governance logs.
-- SuperAdmin backup-account creation, enable/disable, and last-active protection events are recorded in `SuperAdminAuditLogs`.
+- SuperAdmin backup-account creation, enable/disable, step-up verification results, and last-active protection events are recorded in `SuperAdminAuditLogs`.
+- Sensitive SuperAdmin governance audit entries include reason/justification and safe metadata, without passwords, MFA codes, Email OTP values, recovery codes, CAPTCHA tokens, JWTs, or secrets.
 - OTP values, recovery codes, CAPTCHA tokens, passwords, JWTs, and secrets are not written to audit details.
 - Local development can use a logging email sender when SMTP is not configured
 
@@ -680,6 +683,8 @@ Password handling status:
 3. **Containment**: temporarily disable or restrict affected flows, rotate secrets, and block compromised accounts.
 4. **Recovery**: restore validated configuration, re-test affected security controls, and resume service.
 5. **Review**: record root cause, corrective actions, and evidence for academic and operational review.
+
+For suspected SuperAdmin compromise, response should use a trusted backup SuperAdmin account to review SuperAdmin governance logs, disable suspicious SuperAdmin accounts, reset credentials, and rotate affected secrets when needed.
 
 ### 8.8 Access Control Matrix
 
@@ -776,7 +781,7 @@ API requires configuration values for:
 - `ConnectionStrings:DefaultConnection`
 - `JwtSettings:Secret`, `Issuer`, `Audience`, `ExpiryMinutes`
 - `PayMongo:SecretKey` / `PublicKey`
-- `Recaptcha:SiteKey`, `SecretKey`, `ScoreThreshold`
+- `Recaptcha:SiteKey` for the compatibility config endpoint, plus server-side `SecretKey` and `ScoreThreshold`
 - SMTP settings and `AppUrls:ClientBaseUrl` for password-reset delivery
 - `BootstrapAdmin:*` on the first API run when the database has no super-admin yet
 

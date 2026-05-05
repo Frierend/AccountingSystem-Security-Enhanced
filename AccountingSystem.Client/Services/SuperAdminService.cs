@@ -80,23 +80,33 @@ namespace AccountingSystem.Client.Services
                 ?? new List<SuperAdminAccountDTO>();
         }
 
-        public async Task CreateSuperAdminAsync(CreateSuperAdminDTO dto)
+        public async Task CreateSuperAdminAsync(CreateSuperAdminRequestDTO dto)
         {
             var response = await _api.PostAsync("api/superadmin/superadmins", dto);
             if (!response.IsSuccessStatusCode)
             {
-                var error = await response.Content.ReadAsStringAsync();
-                throw new Exception(error);
+                var rawContent = await response.Content.ReadAsStringAsync();
+                throw new Exception(ApiErrorParser.Extract(rawContent, "Unable to create backup SuperAdmin. Please verify the step-up details and try again."));
             }
         }
 
-        public async Task UpdateSuperAdminStatusAsync(int id, string status)
+        public async Task UpdateSuperAdminStatusAsync(int id, UpdateSuperAdminStatusRequestDTO dto)
         {
-            var response = await _api.PutAsync($"api/superadmin/superadmins/{id}/status", new UpdateUserStatusDTO { Status = status });
+            var response = await _api.PutAsync($"api/superadmin/superadmins/{id}/status", dto);
             if (!response.IsSuccessStatusCode)
             {
-                var error = await response.Content.ReadAsStringAsync();
-                throw new Exception(error);
+                var rawContent = await response.Content.ReadAsStringAsync();
+                throw new Exception(ApiErrorParser.Extract(rawContent, "Unable to update SuperAdmin status. Please verify the step-up details and try again."));
+            }
+        }
+
+        public async Task SendStepUpEmailOtpAsync()
+        {
+            var response = await _api.PostAsync("api/superadmin/stepup/email/send", new { });
+            if (!response.IsSuccessStatusCode)
+            {
+                var rawContent = await response.Content.ReadAsStringAsync();
+                throw new Exception(ApiErrorParser.Extract(rawContent, "Unable to send an email verification code. Please try again."));
             }
         }
 

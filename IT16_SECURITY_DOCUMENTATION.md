@@ -33,7 +33,7 @@ The system is designed to manage and monitor accounting and financial management
   - Temporarily locks accounts after exceeding the configured maximum failed attempts.
   - Uses a 5-minute lockout duration for the current demo configuration.
   - Requires Google reCAPTCHA verification on the login page.
-  - Uses configuration-based reCAPTCHA keys: the public site key is served to the client, while the secret key remains server-side.
+  - Uses a client-side public reCAPTCHA site key in the Blazor auth pages; the secret key remains server-side through environment/configuration.
   - Does not show exact attempts left or countdown by default to reduce attacker feedback.
 
 - Data Handling Policy:
@@ -50,14 +50,15 @@ The system is designed to manage and monitor accounting and financial management
   - Tenant/company users can only access authorized company-level resources.
   - Tenant administrators manage company-level users, records, and audit logs.
   - SuperAdmin/System Administrator users manage platform-level governance, backup SuperAdmin accounts, and SuperAdmin audit logs.
-  - The system prevents disabling the last active SuperAdmin account.
+  - The system prevents disabling or deleting the last active SuperAdmin account.
+  - Sensitive SuperAdmin governance actions require step-up verification and are recorded in SuperAdmin audit logs.
   - System configuration and sensitive administrative actions are restricted to authorized roles.
 
 - Logging and Monitoring Policy:
   - System activities such as logins, MFA actions, Email OTP events, record changes, and security-related events are recorded.
   - Tenant audit logs display System and Security categories.
   - SuperAdmin governance audit logs display platform-level and SuperAdmin-related security events.
-  - SuperAdmin audit logs include login failure, CAPTCHA required, login success, lockout, backup SuperAdmin creation, enable/disable, and last-active protection events.
+  - SuperAdmin audit logs include login failure, CAPTCHA required, login success, lockout, backup SuperAdmin creation, enable/disable, step-up verification, and last-active protection events.
   - Logs are reviewed for suspicious activity and must not contain passwords, OTPs, recovery codes, CAPTCHA tokens, JWTs, or secrets.
 
 ## Incident Response Plan
@@ -69,7 +70,7 @@ Security incidents are identified through system logs, audit logs, GitHub Action
 Incidents are reported to the system administrator, SuperAdmin, or responsible authority immediately.
 
 - Response:
-Immediate actions are taken to contain and mitigate the issue, such as account lockout, disabling compromised accounts, rotating exposed secrets, reviewing audit logs, or applying code fixes.
+Immediate actions are taken to contain and mitigate the issue, such as account lockout, disabling compromised accounts, using a trusted backup SuperAdmin to review governance logs, resetting credentials, rotating exposed secrets, and applying code fixes.
 
 - Recovery:
 Restore system functionality, verify data integrity, re-enable safe accounts, and confirm that security controls are working properly.
@@ -86,10 +87,10 @@ GitHub Actions Security Tooling Evidence workflow, CodeQL, Gitleaks, dependency 
 The tools were used to scan and verify the project through automated build and test execution, static code analysis, secret scanning, and dependency vulnerability reporting.
 
 - Findings:
-Previous CI issues involved project reference casing and public reCAPTCHA site key handling. These were addressed by using configuration-based site keys and keeping secrets out of source control. Existing non-blocking warnings may remain, such as UI analyzer warnings, but they do not stop the build or tests.
+Previous CI issues involved project reference casing and public reCAPTCHA site key handling. These were addressed by allowing only the public reCAPTCHA site key constants in client auth pages while keeping secret keys out of source control. Existing non-blocking warnings may remain, such as UI analyzer warnings, but they do not stop the build or tests.
 
 - Fixes:
-CI project reference casing was corrected, reCAPTCHA site/secret key handling was moved to configuration, sensitive values are kept out of source control, and security features such as safe error handling, audit log sanitization, MFA, and reCAPTCHA were implemented.
+CI project reference casing was corrected, the public reCAPTCHA site key was limited to auth-page client constants, secret values are kept in server-side configuration and out of source control, and security features such as safe error handling, audit log sanitization, MFA, and reCAPTCHA were implemented.
 
 - Proof:
 [Insert Screenshot: GitHub Actions Security Tooling Evidence green check]

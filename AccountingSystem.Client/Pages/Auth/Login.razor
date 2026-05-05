@@ -508,6 +508,7 @@
 </style>
 
 @code {
+    private const string RecaptchaSiteKey = "6LeREs0sAAAAALW-ePzb9R273YULYfKjGcg2SWr8";
     private const string RecaptchaContainerId = "login_recaptcha_container";
 
     private LoginDTO loginModel = new LoginDTO();
@@ -519,7 +520,6 @@
     private bool requiresRecaptcha = true;
     private bool captchaRendered = false;
     private bool captchaRenderAttempted = false;
-    private string recaptchaSiteKey = string.Empty;
 
     // Password visibility state
     private bool isShowPassword = false;
@@ -549,12 +549,7 @@
         var rendered = false;
         try
         {
-            var siteKey = await GetRecaptchaSiteKeyAsync();
-            rendered = await JS.InvokeAsync<bool>("renderRecaptcha", RecaptchaContainerId, siteKey);
-        }
-        catch (Exception ex) when (ex is not JSException)
-        {
-            Logger.LogWarning(ex, "Unable to load login CAPTCHA configuration.");
+            rendered = await JS.InvokeAsync<bool>("renderRecaptcha", RecaptchaContainerId, RecaptchaSiteKey);
         }
         catch (JSException ex)
         {
@@ -567,17 +562,6 @@
             errorMessage = "Security verification failed to load. Please refresh and try again.";
             StateHasChanged();
         }
-    }
-
-    private async Task<string> GetRecaptchaSiteKeyAsync()
-    {
-        if (!string.IsNullOrWhiteSpace(recaptchaSiteKey))
-        {
-            return recaptchaSiteKey;
-        }
-
-        recaptchaSiteKey = (await AuthService.GetRecaptchaConfig()).SiteKey;
-        return recaptchaSiteKey;
     }
 
     private void OnLogoLoaded()

@@ -402,6 +402,7 @@
     private static bool IsSecurityAction(string action)
     {
         return action.StartsWith("SUPERADMIN-AUTH", StringComparison.OrdinalIgnoreCase) ||
+               action.Contains("STEPUP", StringComparison.OrdinalIgnoreCase) ||
                action.Contains("CAPTCHA", StringComparison.OrdinalIgnoreCase) ||
                action.Contains("LOCKOUT", StringComparison.OrdinalIgnoreCase) ||
                action.Contains("LOGIN", StringComparison.OrdinalIgnoreCase);
@@ -414,6 +415,9 @@
         "SUPERADMIN-CREATE" => "SuperAdmin Create",
         "SUPERADMIN-DISABLE" => "SuperAdmin Disable",
         "SUPERADMIN-ENABLE" => "SuperAdmin Enable",
+        "SUPERADMIN-STEPUP-FAILED" => "Step-Up Failed",
+        "SUPERADMIN-STEPUP-SUCCESS" => "Step-Up Success",
+        "SUPERADMIN-STEPUP-MFA-REQUIRED" => "Step-Up MFA Required",
         "SUPERADMIN-LAST-ADMIN-PROTECTION" => "Last Admin Protection",
         "SUPERADMIN-AUTH-LOGIN-FAILURE" => "Login Failure",
         "SUPERADMIN-AUTH-LOCKOUT" => "Lockout",

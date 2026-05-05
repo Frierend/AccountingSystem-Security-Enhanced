@@ -18,8 +18,8 @@ This document is descriptive only and does not alter code, schema, migrations, o
 | Resend confirmation | Implemented | `POST /api/auth/resend-confirmation`, `AuthService.ResendConfirmationAsync` |
 | MFA (Authenticator App, Email OTP, recovery codes) | Implemented | `/api/auth/login/mfa`, `/api/auth/login/mfa/email/send`, and `/api/auth/mfa/*` endpoints |
 | Registration bot protection | Implemented | reCAPTCHA token from `RegisterCompany.razor` validated by `CaptchaService` |
-| Always-on login bot protection | Implemented | login reCAPTCHA is shown by default and required server-side for every non-locked login attempt; public site key comes from API configuration |
-| Backup SuperAdmin support | Implemented | `SuperAdminController` supports SuperAdmin account listing/creation/status changes with last-active protection |
+| Always-on login bot protection | Implemented | login reCAPTCHA is shown by default and required server-side for every non-locked login attempt; public site key is client-side |
+| Backup SuperAdmin support | Implemented | `SuperAdminController` supports SuperAdmin account listing/creation/status changes with last-active protection (last active SuperAdmin cannot be disabled or deleted) |
 | PayMongo source + redirect payment flow | Implemented (test mode for project use) | `PaymentController.CreateSource`, client payment callback page |
 | PayMongo webhook verification hardening | Implemented | `PaymentService.VerifyWebhookSignature` validates HMAC signature and replay window |
 
@@ -45,6 +45,7 @@ Password policy is enforced through `AccountingSystem.Shared/Validation/Password
 - Email OTP MFA requires a confirmed email address and does not require Authenticator App MFA to be enabled.
 - Users, including SuperAdmins, can resend email confirmation before enabling Email OTP MFA.
 - Recovery codes remain available for Authenticator App MFA where valid recovery codes exist.
+- Sensitive SuperAdmin governance actions (create/enable/disable SuperAdmin accounts) require step-up verification with password re-entry and MFA when enabled.
 
 ## Lockout and Rate Limiting
 
@@ -62,7 +63,7 @@ Default security controls from configuration and startup:
 - Sensitive settings in `AccountingSystem.Api/appsettings.json` are placeholder-based (`__SET_VIA_ENV__`), not live credentials.
 - Expected secret sources: environment variables and local `.env` (developer machine).
 - SMTP, PayMongo secret key, and reCAPTCHA secret are required outside Development.
-- reCAPTCHA is configuration-based: the public site key is exposed only through `GET /api/auth/recaptcha/config`, while `Recaptcha:SecretKey` remains server-only.
+- reCAPTCHA uses a client-side public site key in Blazor auth pages, while `Recaptcha:SecretKey` remains server-only through environment/configuration.
 - The seeded/demo bootstrap SuperAdmin is email-confirmed for MFA demonstration; backup SuperAdmins created in the UI use the standard email confirmation flow.
 
 ## Authorization and Tenant Isolation
@@ -70,6 +71,7 @@ Default security controls from configuration and startup:
 - Roles used across API and client: `Admin`, `Accounting`, `Management`, `SuperAdmin`.
 - API access control is enforced with `[Authorize]` and `[Authorize(Roles = ...)]`.
 - Client route/UI checks use `AuthorizeRouteView` and role-based views.
+- Last-active SuperAdmin protection prevents disabling or deleting the final active SuperAdmin account.
 - Tenant isolation is enforced by:
   - `TenantAccessMiddleware` user/company status checks
   - EF Core query filters scoped by `CompanyId`.
@@ -82,6 +84,8 @@ Default security controls from configuration and startup:
 - Super-admin governance actions are logged in `SuperAdminAuditLogs`.
 - Failed login, lockout, CAPTCHA-required, MFA-challenge, and login-success events targeting SuperAdmin accounts are mirrored into SuperAdmin governance logs.
 - Backup SuperAdmin creation, enable/disable actions, and last-active-SuperAdmin protection are logged as SuperAdmin governance events.
+- Step-up verification outcomes for sensitive SuperAdmin governance actions are logged (`SUPERADMIN-STEPUP-SUCCESS` / `SUPERADMIN-STEPUP-FAILED`) with safe metadata and required reason/justification.
+- SuperAdmin governance logs do not include current password, MFA codes, Email OTP values, recovery codes, CAPTCHA tokens, JWTs, or secrets.
 - Passwords, OTP values, recovery codes, CAPTCHA tokens, JWTs, and secrets are not written to audit details.
 
 ## Security Risks by Severity
@@ -134,7 +138,7 @@ Default security controls from configuration and startup:
 - [x] MFA login and MFA management endpoints
 - [x] reCAPTCHA-protected registration
 - [x] Always-on login reCAPTCHA
-- [x] Configuration-based reCAPTCHA site/secret key handling
+- [x] Client-side public reCAPTCHA site key and server-side secret key handling
 - [x] Backup SuperAdmin support and last-active protection
 - [x] PayMongo source/redirect test flow
 - [x] Protected dashboard and role-based pages
@@ -142,4 +146,4 @@ Default security controls from configuration and startup:
 
 ## Conclusion
 
-The project has a substantial implemented authentication and authorization foundation for IT16, including account recovery, email confirmation, optional independently managed Authenticator App MFA, optional Email OTP MFA, recovery codes, lockout, always-on login reCAPTCHA, rate limiting, audit logging, PayMongo webhook signature validation, and CI-backed security-tooling evidence. The most important remaining hardening items are stronger token lifecycle controls, production-grade/shared Email OTP challenge storage, and tightening CI security enforcement thresholds after baseline remediation.
+The project has a substantial implemented authentication and authorization foundation for IT16, including account recovery, email confirmation, optional independently managed Authenticator App MFA, optional Email OTP MFA, recovery codes, lockout, always-on login reCAPTCHA, rate limiting, SuperAdmin governance step-up verification for sensitive SuperAdmin actions, audit logging, PayMongo webhook signature validation, and CI-backed security-tooling evidence. If a SuperAdmin account is compromised, operational response should use a trusted backup SuperAdmin to review governance logs, disable suspicious accounts, reset credentials, and rotate affected secrets as needed. The most important remaining hardening items are stronger token lifecycle controls, production-grade/shared Email OTP challenge storage, and tightening CI security enforcement thresholds after baseline remediation.
