@@ -342,7 +342,16 @@
                         @if (!mfaStatus.IsEmailConfirmed)
                         {
                             <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4">
-                                Confirm your email address before enabling Email OTP MFA.
+                                <div class="d-flex flex-column flex-sm-row align-start align-sm-center justify-space-between gap-3">
+                                    <span>Confirm your email address before enabling Email OTP MFA.</span>
+                                    <MudButton Variant="Variant.Outlined"
+                                               Color="Color.Warning"
+                                               Size="Size.Small"
+                                               Disabled="@(isEmailOtpSubmitting || isConfirmationSubmitting)"
+                                               OnClick="HandleResendConfirmationAsync">
+                                        @(isConfirmationSubmitting ? "Sending..." : "Resend confirmation email")
+                                    </MudButton>
+                                </div>
                             </MudAlert>
                         }
 
@@ -496,6 +505,7 @@
     private bool isMfaSubmitting;
     private bool isSensitiveActionSubmitting;
     private bool isEmailOtpSubmitting;
+    private bool isConfirmationSubmitting;
     private string currentEmail = string.Empty;
     private string? sensitiveAction;
     private bool emailOtpSetupPending;
@@ -642,6 +652,29 @@
     {
         mfaSetup = null;
         mfaVerificationModel = new VerifyAuthenticatorSetupDTO();
+    }
+
+    private async Task HandleResendConfirmationAsync()
+    {
+        isConfirmationSubmitting = true;
+        try
+        {
+            await AuthService.ResendConfirmation(new ResendConfirmationDTO { Email = mfaStatus.Email });
+            Snackbar.Add("If your email still needs confirmation, a new confirmation link has been sent.", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to resend profile email confirmation.");
+            Snackbar.Add(
+                string.IsNullOrWhiteSpace(ex.Message)
+                    ? "Unable to resend confirmation email. Please try again."
+                    : ex.Message,
+                Severity.Error);
+        }
+        finally
+        {
+            isConfirmationSubmitting = false;
+        }
     }
 
     private async Task HandleBeginEmailOtpSetup()

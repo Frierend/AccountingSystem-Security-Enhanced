@@ -107,6 +107,7 @@ namespace AccountingSystem.API.Configuration
             {
                 CheckRequiredValue(configuration["PayMongo:SecretKey"], "PayMongo:SecretKey", missingKeys);
                 CheckRequiredValue(configuration["PayMongo:WebhookSecret"], "PayMongo:WebhookSecret", missingKeys);
+                CheckRequiredValue(configuration["Recaptcha:SiteKey"], "Recaptcha:SiteKey", missingKeys);
                 CheckRequiredValue(configuration["Recaptcha:SecretKey"], "Recaptcha:SecretKey", missingKeys);
             }
 

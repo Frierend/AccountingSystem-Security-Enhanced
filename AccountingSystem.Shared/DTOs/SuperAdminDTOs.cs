@@ -1,5 +1,8 @@
 ﻿using AccountingSystem.Shared.Enums;
 
+using AccountingSystem.Shared.Validation;
+using System.ComponentModel.DataAnnotations;
+
 namespace AccountingSystem.Shared.DTOs
 {
     public class SystemDashboardDTO
@@ -61,6 +64,43 @@ namespace AccountingSystem.Shared.DTOs
     public class UpdateUserStatusDTO
     {
         public string Status { get; set; } = string.Empty; // Active, Restricted, Blocked
+    }
+
+    public class SuperAdminAccountDTO
+    {
+        public int Id { get; set; }
+
+        public string FullName { get; set; } = string.Empty;
+
+        public string Email { get; set; } = string.Empty;
+
+        public bool IsActive { get; set; }
+
+        public string Status { get; set; } = "Active";
+
+        public DateTime CreatedAt { get; set; }
+
+        public bool EmailConfirmed { get; set; }
+
+        public bool IsCurrentUser { get; set; }
+    }
+
+    public class CreateSuperAdminDTO
+    {
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [Required]
+        public string FullName { get; set; } = string.Empty;
+
+        [Required]
+        [StrongPassword]
+        public string Password { get; set; } = string.Empty;
+
+        [Required]
+        [Compare(nameof(Password), ErrorMessage = "Passwords do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
     }
 
     // Super Admin Audit Log DTO

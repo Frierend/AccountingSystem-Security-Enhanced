@@ -22,7 +22,7 @@
 - Role-based UI and API access control.
 - Audit log visibility for tenant and super-admin actions.
 - PayMongo payment source and redirect flow (test-mode usage for local/academic demonstration).
-- Registration and login flows protected by Google reCAPTCHA v2 Checkbox.
+- Registration and login flows protected by Google reCAPTCHA v2 Checkbox using configuration-provided site/secret keys.
 - Password reset and email confirmation flows through SMTP.
 
 ## System Architecture
@@ -59,13 +59,15 @@
   - lockout after 5 failed attempts
   - temporary demo lockout duration: 5 minutes
   - login reCAPTCHA is always shown and required before credential processing
+  - reCAPTCHA public site key is served from API configuration; the secret key stays server-side
   - endpoint-specific rate limiting on auth routes.
 - Optional MFA:
   - Authenticator App MFA with recovery codes
   - Email OTP MFA to a confirmed email address
   - Authenticator App MFA and Email OTP MFA are independently managed from the user profile
+  - profile Email OTP setup shows email confirmation state and can resend the confirmation email before enabling Email OTP
 - Tenant isolation through middleware and EF Core query filters.
-- Audit logging through `AuditMiddleware` plus dedicated auth security events; tenant audit logs show System and Security categories, and SuperAdmin-account auth events are mirrored in governance logs.
+- Audit logging through `AuditMiddleware` plus dedicated auth security events; tenant audit logs show System and Security categories, and SuperAdmin-account auth/security and governance events are mirrored in governance logs.
 
 ## Security Policy Snapshot
 
@@ -112,6 +114,9 @@
 
 ### SuperAdmin
 - Cross-tenant governance endpoints and super-admin audit logs.
+- Can create backup SuperAdmin/System Administrator accounts from Global User Management.
+- The system prevents disabling the last active SuperAdmin account.
+- The seeded/demo bootstrap SuperAdmin is email-confirmed for MFA demonstration; backup SuperAdmins use the normal email confirmation flow.
 
 ## Core Modules
 

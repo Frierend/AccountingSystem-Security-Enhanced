@@ -125,6 +125,10 @@ Authorization Required: Mixed (public + authenticated)
 
 Endpoints:
 
+- **[GET] /api/auth/recaptcha/config**
+  - Description: Returns only the public reCAPTCHA site key from API configuration.
+  - Response: `RecaptchaConfigDTO`.
+  - Status Codes: `200`, `503`.
 - **[POST] /api/auth/login**
   - Description: User login and JWT issuance.
   - Request: `LoginDTO`.
@@ -201,7 +205,7 @@ Endpoints:
   - Request: `MfaReauthenticationDTO`.
   - Status Codes: `200`, `400`, `401`.
 - **[POST] /api/auth/mfa/email/setup**
-  - Description: Sends a setup verification code to the current user's confirmed email address.
+  - Description: Sends a setup verification code to the current user's confirmed email address. If email is unconfirmed, the profile can resend the confirmation email first.
   - Status Codes: `200`, `400`, `401`.
 - **[POST] /api/auth/mfa/email/verify**
   - Description: Verifies setup code and enables Email OTP MFA.
@@ -328,7 +332,12 @@ Endpoints:
 - **[GET] /api/superadmin/users**
 - **[PUT] /api/superadmin/users/{id}/status**
 - **[PUT] /api/superadmin/users/{id}/toggle**
+- **[GET] /api/superadmin/superadmins**
+- **[POST] /api/superadmin/superadmins**
+- **[PUT] /api/superadmin/superadmins/{id}/status**
 - **[GET] /api/superadmin/audit-logs**
+
+Backup SuperAdmin support allows an existing SuperAdmin to create another System Administrator account with a strong password and email confirmation flow. The API prevents disabling the last active SuperAdmin account and logs `SUPERADMIN-CREATE`, `SUPERADMIN-DISABLE`, `SUPERADMIN-ENABLE`, and `SUPERADMIN-LAST-ADMIN-PROTECTION` governance events.
 
 ---
 
@@ -338,14 +347,14 @@ Endpoints:
 
 | Domain        | DTOs                                                                                                                                   |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth          | `LoginDTO`, `RegisterDTO`, `CompanyRegisterDTO`, `AuthResponseDTO`, `UpdateProfileDTO`, `ChangePasswordDTO`                            |
+| Auth          | `LoginDTO`, `RegisterDTO`, `CompanyRegisterDTO`, `AuthResponseDTO`, `UpdateProfileDTO`, `ChangePasswordDTO`, `RecaptchaConfigDTO`        |
 | Company       | `CompanyDTO`, `UpdateCompanyDTO`                                                                                                       |
 | Users         | `UserDTO`, `GlobalUserDTO`, `UpdateUserStatusDTO`                                                                                      |
 | Ledger        | `AccountDTO`, `CreateAccountDTO`, `UpdateAccountDTO`, `JournalEntryDTO`, `JournalEntryLineDTO`, `TrialBalanceDTO`, `AccountBalanceDTO` |
 | AP            | `VendorDTO`, `CreateVendorDTO`, `UpdateVendorDTO`, `BillDTO`, `CreateBillDTO`                                                          |
 | AR            | `CustomerDTO`, `CreateCustomerDTO`, `UpdateCustomerDTO`, `InvoiceDTO`, `CreateInvoiceDTO`                                              |
 | Payments      | `RecordPaymentDTO`, `PaymentHistoryDTO`, `CreateSourceDTO`, `PaymentSourceResponseDTO`, PayMongo request/response/webhook DTOs         |
-| Audit         | `AuditLogDTO`, `SuperAdminAuditLogDTO`, `SystemDashboardDTO`, `MonthlyActivityDTO`, `TenantDTO`, `UpdateCompanyStatusDTO`              |
+| Audit         | `AuditLogDTO`, `SuperAdminAuditLogDTO`, `SystemDashboardDTO`, `MonthlyActivityDTO`, `TenantDTO`, `UpdateCompanyStatusDTO`, `SuperAdminAccountDTO`, `CreateSuperAdminDTO` |
 | External data | `WorldBankDataPoint`, `WorldBankIndicator`, `FrankfurterResponse`, `FrankfurterRates`                                                  |
 
 ### 3.2 Mapping relationships (DTO ↔ Entity)
@@ -500,8 +509,8 @@ Purpose: Multi-tenant governance and platform monitoring.
 
 - `SystemDashboard`: platform KPIs/trends/recent actions.
 - `TenantManager`: list tenants + status management.
-- `GlobalUserManager`: global user status management.
-- `AdminAuditLogs`: superadmin action history.
+- `GlobalUserManager`: global tenant user status management plus backup SuperAdmin listing/creation/status management with last-active protection.
+- `AdminAuditLogs`: SuperAdmin action history with tenant-audit-style filters, local timestamp formatting, and clickable details dialog.
   Connected API Endpoints: `/api/superadmin/*`.  
   Data Models Used: `SystemDashboardDTO`, `TenantDTO`, `GlobalUserDTO`, `SuperAdminAuditLogDTO`, status update DTOs.
 
@@ -587,7 +596,7 @@ Both API and Client include project references to `AccountingSystem.Shared`, cre
 - **Database:** Microsoft SQL Server accessed through EF Core 8
 - **Authentication:** JWT bearer tokens with role-based authorization
 - **Email Delivery:** SMTP via `SmtpClient` (Gmail App Password compatible when Gmail SMTP is used)
-- **Bot Protection:** Google reCAPTCHA v2 Checkbox in company registration flow and always-on login reCAPTCHA required for every non-locked login attempt
+- **Bot Protection:** Google reCAPTCHA v2 Checkbox in company registration flow and always-on login reCAPTCHA required for every non-locked login attempt. The public site key comes from API configuration, and the secret key remains server-side.
 - **Payment Integration:** PayMongo source and redirect flow (test-mode usage for local/academic demonstration)
 - **Additional libraries:** MudBlazor, Blazored.LocalStorage, QuestPDF, Swashbuckle
 
@@ -612,7 +621,7 @@ Default lockout settings in configuration:
 
 The login UI intentionally does not show exact attempts left or a lockout countdown. This limits attacker feedback while still showing generic user-friendly errors for CAPTCHA and temporary lockout states.
 
-Login reCAPTCHA is shown by default and required before credential processing. Account lockout still applies after the configured failed attempts.
+Login reCAPTCHA is shown by default and required before credential processing. Account lockout still applies after the configured failed attempts. Login and registration request the public site key from `GET /api/auth/recaptcha/config`; no reCAPTCHA secret is exposed to the client.
 
 Rate limiting is configured per auth endpoint (login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, MFA management).
 
@@ -629,6 +638,7 @@ Implemented features:
   - Authenticator App MFA with recovery codes
   - Email OTP MFA to a confirmed email address
   - Authenticator App MFA and Email OTP MFA are independently managed from the user profile
+  - Unconfirmed accounts, including SuperAdmin accounts, can resend confirmation before enabling Email OTP MFA
 - Registration protected by Google reCAPTCHA token verification
 - Login protected by Google reCAPTCHA token verification on every normal login attempt
 
@@ -659,6 +669,7 @@ Password handling status:
 - Tenant audit logs display System and Security categories
 - Super-admin actions are recorded in `SuperAdminAuditLogs`
 - SuperAdmin-account login failures, lockouts, CAPTCHA-required events, MFA challenges, and successful logins are mirrored into SuperAdmin governance logs.
+- SuperAdmin backup-account creation, enable/disable, and last-active protection events are recorded in `SuperAdminAuditLogs`.
 - OTP values, recovery codes, CAPTCHA tokens, passwords, JWTs, and secrets are not written to audit details.
 - Local development can use a logging email sender when SMTP is not configured
 
@@ -678,7 +689,7 @@ Password handling status:
 | Admin | JWT | Tenant user management, company settings, GL/AP/AR operations, audit logs | Super-admin endpoints |
 | Accounting | JWT | GL/AP/AR transaction workflows, payment source flow, reports | Tenant user management, super-admin endpoints |
 | Management | JWT | Dashboard and selected reporting/ledger read operations | User management, most transaction-write endpoints, super-admin endpoints |
-| SuperAdmin | JWT | Cross-tenant governance endpoints and super-admin audit logs | Tenant-scoped admin actions not exposed to super-admin role |
+| SuperAdmin | JWT | Cross-tenant governance endpoints, backup SuperAdmin management, and super-admin audit logs | Tenant-scoped admin actions not exposed to super-admin role |
 
 ### 8.9 Code Auditing and Tools
 
@@ -765,9 +776,11 @@ API requires configuration values for:
 - `ConnectionStrings:DefaultConnection`
 - `JwtSettings:Secret`, `Issuer`, `Audience`, `ExpiryMinutes`
 - `PayMongo:SecretKey` / `PublicKey`
-- `Recaptcha:SecretKey`, `ScoreThreshold`
+- `Recaptcha:SiteKey`, `SecretKey`, `ScoreThreshold`
 - SMTP settings and `AppUrls:ClientBaseUrl` for password-reset delivery
 - `BootstrapAdmin:*` on the first API run when the database has no super-admin yet
+
+The seeded/demo bootstrap SuperAdmin is email-confirmed for MFA demonstration. Backup SuperAdmins created from Global User Management use the normal email confirmation flow and start unconfirmed.
 
 ### 9.3 Configuration files
 

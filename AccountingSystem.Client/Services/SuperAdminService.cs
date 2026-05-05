@@ -73,6 +73,33 @@ namespace AccountingSystem.Client.Services
             }
         }
 
+        // Backup SuperAdmin Management
+        public async Task<List<SuperAdminAccountDTO>> GetSuperAdminAccountsAsync()
+        {
+            return await _api.GetAsync<List<SuperAdminAccountDTO>>("api/superadmin/superadmins")
+                ?? new List<SuperAdminAccountDTO>();
+        }
+
+        public async Task CreateSuperAdminAsync(CreateSuperAdminDTO dto)
+        {
+            var response = await _api.PostAsync("api/superadmin/superadmins", dto);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                throw new Exception(error);
+            }
+        }
+
+        public async Task UpdateSuperAdminStatusAsync(int id, string status)
+        {
+            var response = await _api.PutAsync($"api/superadmin/superadmins/{id}/status", new UpdateUserStatusDTO { Status = status });
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                throw new Exception(error);
+            }
+        }
+
         // Super Admin Audit Logs 
         public async Task<List<SuperAdminAuditLogDTO>> GetAuditLogsAsync()
         {

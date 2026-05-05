@@ -62,4 +62,32 @@ public class AuditDetailsDialogTests : DialogTestContext
 
         dialogProvider.Markup.Should().Contain("badge-red");
     }
+
+    [Fact]
+    public async Task Render_WhenSuperAdminLogProvided_ShouldShowClickableDetailsDialogContent()
+    {
+        var dialogProvider = Render<MudDialogProvider>();
+        var dialogService = Services.GetRequiredService<IDialogService>();
+
+        var log = new SuperAdminAuditLogDTO
+        {
+            AdminEmail = "superadmin@example.com",
+            Action = "SUPERADMIN-AUTH-LOGIN-FAILURE",
+            TargetType = "SuperAdminAccount",
+            TargetName = "superadmin@example.com",
+            Details = "Reason=InvalidPassword",
+            Timestamp = new DateTime(2026, 5, 5, 8, 30, 0, DateTimeKind.Utc)
+        };
+
+        var parameters = new DialogParameters
+        {
+            { nameof(SuperAdminAuditDetailsDialog.Log), log }
+        };
+
+        await dialogService.ShowAsync<SuperAdminAuditDetailsDialog>("SuperAdmin Audit Details", parameters);
+
+        dialogProvider.Markup.Should().Contain("SuperAdmin Audit Details");
+        dialogProvider.Markup.Should().Contain("superadmin@example.com");
+        dialogProvider.Markup.Should().Contain("Reason=InvalidPassword");
+    }
 }

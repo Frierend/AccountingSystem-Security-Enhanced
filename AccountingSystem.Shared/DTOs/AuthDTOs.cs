@@ -157,6 +157,11 @@ namespace AccountingSystem.Shared.DTOs
         public string ChallengeToken { get; set; } = string.Empty;
     }
 
+    public class RecaptchaConfigDTO
+    {
+        public string SiteKey { get; set; } = string.Empty;
+    }
+
     public class AuthResponseDTO
     {
         public string Token { get; set; } = string.Empty;

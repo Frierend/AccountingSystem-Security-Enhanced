@@ -110,6 +110,24 @@ namespace AccountingSystem.Client.Services
             }
         }
 
+        public async Task<RecaptchaConfigDTO> GetRecaptchaConfig()
+        {
+            var response = await _api.GetRawAsync("api/auth/recaptcha/config", requiresAuth: false);
+            if (!response.IsSuccessStatusCode)
+            {
+                var rawContent = await response.Content.ReadAsStringAsync();
+                throw new Exception(ApiErrorParser.Extract(rawContent, "Security verification is not configured."));
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<RecaptchaConfigDTO>();
+            if (result == null || string.IsNullOrWhiteSpace(result.SiteKey))
+            {
+                throw new Exception("Security verification is not configured.");
+            }
+
+            return result;
+        }
+
         public async Task<AuthResponseDTO> RegisterCompany(CompanyRegisterDTO registerDto)
         {
             var response = await _api.PostAsync("api/auth/register-company", registerDto, requiresAuth: false);

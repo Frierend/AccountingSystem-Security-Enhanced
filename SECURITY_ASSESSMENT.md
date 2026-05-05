@@ -18,7 +18,8 @@ This document is descriptive only and does not alter code, schema, migrations, o
 | Resend confirmation | Implemented | `POST /api/auth/resend-confirmation`, `AuthService.ResendConfirmationAsync` |
 | MFA (Authenticator App, Email OTP, recovery codes) | Implemented | `/api/auth/login/mfa`, `/api/auth/login/mfa/email/send`, and `/api/auth/mfa/*` endpoints |
 | Registration bot protection | Implemented | reCAPTCHA token from `RegisterCompany.razor` validated by `CaptchaService` |
-| Always-on login bot protection | Implemented | login reCAPTCHA is shown by default and required server-side for every non-locked login attempt |
+| Always-on login bot protection | Implemented | login reCAPTCHA is shown by default and required server-side for every non-locked login attempt; public site key comes from API configuration |
+| Backup SuperAdmin support | Implemented | `SuperAdminController` supports SuperAdmin account listing/creation/status changes with last-active protection |
 | PayMongo source + redirect payment flow | Implemented (test mode for project use) | `PaymentController.CreateSource`, client payment callback page |
 | PayMongo webhook verification hardening | Implemented | `PaymentService.VerifyWebhookSignature` validates HMAC signature and replay window |
 
@@ -42,6 +43,7 @@ Password policy is enforced through `AccountingSystem.Shared/Validation/Password
 
 - Authenticator App MFA and Email OTP MFA are optional and independently managed from the user profile.
 - Email OTP MFA requires a confirmed email address and does not require Authenticator App MFA to be enabled.
+- Users, including SuperAdmins, can resend email confirmation before enabling Email OTP MFA.
 - Recovery codes remain available for Authenticator App MFA where valid recovery codes exist.
 
 ## Lockout and Rate Limiting
@@ -60,6 +62,8 @@ Default security controls from configuration and startup:
 - Sensitive settings in `AccountingSystem.Api/appsettings.json` are placeholder-based (`__SET_VIA_ENV__`), not live credentials.
 - Expected secret sources: environment variables and local `.env` (developer machine).
 - SMTP, PayMongo secret key, and reCAPTCHA secret are required outside Development.
+- reCAPTCHA is configuration-based: the public site key is exposed only through `GET /api/auth/recaptcha/config`, while `Recaptcha:SecretKey` remains server-only.
+- The seeded/demo bootstrap SuperAdmin is email-confirmed for MFA demonstration; backup SuperAdmins created in the UI use the standard email confirmation flow.
 
 ## Authorization and Tenant Isolation
 
@@ -77,6 +81,7 @@ Default security controls from configuration and startup:
 - Tenant audit logs show System and Security categories.
 - Super-admin governance actions are logged in `SuperAdminAuditLogs`.
 - Failed login, lockout, CAPTCHA-required, MFA-challenge, and login-success events targeting SuperAdmin accounts are mirrored into SuperAdmin governance logs.
+- Backup SuperAdmin creation, enable/disable actions, and last-active-SuperAdmin protection are logged as SuperAdmin governance events.
 - Passwords, OTP values, recovery codes, CAPTCHA tokens, JWTs, and secrets are not written to audit details.
 
 ## Security Risks by Severity
@@ -129,6 +134,8 @@ Default security controls from configuration and startup:
 - [x] MFA login and MFA management endpoints
 - [x] reCAPTCHA-protected registration
 - [x] Always-on login reCAPTCHA
+- [x] Configuration-based reCAPTCHA site/secret key handling
+- [x] Backup SuperAdmin support and last-active protection
 - [x] PayMongo source/redirect test flow
 - [x] Protected dashboard and role-based pages
 - [x] Audit logs and auth security audit events

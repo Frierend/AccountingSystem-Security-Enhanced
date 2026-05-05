@@ -49,6 +49,12 @@ namespace AccountingSystem.Client.Services
             return await _httpClient.GetFromJsonAsync<T>(uri);
         }
 
+        public async Task<HttpResponseMessage> GetRawAsync(string uri, bool requiresAuth = true)
+        {
+            await PrepareAuthHeaderAsync(requiresAuth);
+            return await _httpClient.GetAsync(uri);
+        }
+
         public async Task<HttpResponseMessage> PostAsync<T>(string uri, T data, bool requiresAuth = true)
         {
             await PrepareAuthHeaderAsync(requiresAuth);

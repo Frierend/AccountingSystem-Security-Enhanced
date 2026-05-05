@@ -622,31 +622,53 @@
 </style>
 
 @code {
+    private const string RecaptchaContainerId = "recaptcha_container";
+
     private CompanyRegisterDTO registerModel = new CompanyRegisterDTO();
     private bool isLoading = false;
     private bool logoLoaded = false;
     private bool showTermsModal = false;
     private string errorMessage = "";
+    private string recaptchaSiteKey = string.Empty;
 
     // Password visibility state
     private bool isShowPassword = false;
     private InputType passwordInputType = InputType.Password;
     private string passwordInputIcon = Icons.Material.Outlined.VisibilityOff;
 
-    private const string SiteKey = "6LeREs0sAAAAALW-ePzb9R273YULYfKjGcg2SWr8";
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             await Task.Delay(500);
-            var isCaptchaRendered = await JS.InvokeAsync<bool>("renderRecaptcha", "recaptcha_container", SiteKey);
+            var isCaptchaRendered = false;
+            try
+            {
+                var siteKey = await GetRecaptchaSiteKeyAsync();
+                isCaptchaRendered = await JS.InvokeAsync<bool>("renderRecaptcha", RecaptchaContainerId, siteKey);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Unable to render registration CAPTCHA widget.");
+            }
+
             if (!isCaptchaRendered)
             {
                 errorMessage = "Security verification failed to load. Please refresh and try again.";
                 StateHasChanged();
             }
         }
+    }
+
+    private async Task<string> GetRecaptchaSiteKeyAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(recaptchaSiteKey))
+        {
+            return recaptchaSiteKey;
+        }
+
+        recaptchaSiteKey = (await AuthService.GetRecaptchaConfig()).SiteKey;
+        return recaptchaSiteKey;
     }
 
     private void OnLogoLoaded()

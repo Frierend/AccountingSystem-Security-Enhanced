@@ -59,6 +59,7 @@ The project policy is:
 ### Required outside Development
 
 - `PayMongo__SecretKey`
+- `Recaptcha__SiteKey`
 - `Recaptcha__SecretKey`
 - `Smtp__Host`
 - `Smtp__Port`
@@ -77,13 +78,18 @@ The project policy is:
 - `BootstrapAdmin__InitialPassword`
 
 `BootstrapAdmin__*` values are required when creating the first super-admin account in an uninitialized environment.
+The seeded/demo bootstrap SuperAdmin is created with `EmailConfirmed = true` so Email OTP MFA can be enabled during demonstrations. Backup SuperAdmins created from the UI use the normal email confirmation flow and start unconfirmed until the confirmation link is used.
 
 ## Security Control Notes
 
 - Registration reCAPTCHA is implemented through Google reCAPTCHA v2 Checkbox.
 - Login reCAPTCHA is always shown on the login page and required server-side for every non-locked login attempt.
+- `Recaptcha__SiteKey` is public but still configuration-based and served to the client through `GET /api/auth/recaptcha/config`.
+- `Recaptcha__SecretKey` is server-only and must not appear in client files or committed configuration.
 - Account lockout still applies after the configured failed attempts, with a 5-minute demo/presentation lockout in the current configuration.
 - Authenticator App MFA and Email OTP MFA are optional and independently managed from the user profile.
+- Email OTP MFA requires confirmed email; the profile can resend confirmation before setup.
+- Backup SuperAdmin creation is supported, and the last active SuperAdmin account cannot be disabled.
 
 ## Local Development Setup
 
@@ -104,6 +110,8 @@ $env:Smtp__Port = "587"
 $env:Smtp__Username = "your-email@gmail.com"
 $env:Smtp__Password = "your-gmail-app-password"
 $env:Smtp__EnableSsl = "true"
+$env:Recaptcha__SiteKey = "your-public-recaptcha-site-key"
+$env:Recaptcha__SecretKey = "your-private-recaptcha-secret-key"
 ```
 
 ### SMTP note (Gmail App Password)

@@ -15,12 +15,32 @@ namespace AccountingSystem.API.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
+        private readonly IConfiguration _configuration;
         private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IAuthService authService, ILogger<AuthController>? logger = null)
+        public AuthController(
+            IAuthService authService,
+            IConfiguration? configuration = null,
+            ILogger<AuthController>? logger = null)
         {
             _authService = authService;
+            _configuration = configuration ?? new ConfigurationBuilder().Build();
             _logger = logger ?? NullLogger<AuthController>.Instance;
+        }
+
+        [HttpGet("recaptcha/config")]
+        [AllowAnonymous]
+        public IActionResult GetRecaptchaConfig()
+        {
+            var siteKey = _configuration["Recaptcha:SiteKey"];
+            if (StartupConfigurationValidator.IsMissingOrPlaceholder(siteKey))
+            {
+                return StatusCode(
+                    StatusCodes.Status503ServiceUnavailable,
+                    new { error = StartupConfigurationValidator.BuildMissingValueMessage("Recaptcha:SiteKey") });
+            }
+
+            return Ok(new RecaptchaConfigDTO { SiteKey = siteKey!.Trim() });
         }
 
         [HttpPost("login")]

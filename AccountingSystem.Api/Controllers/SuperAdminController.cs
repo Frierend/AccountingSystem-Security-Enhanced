@@ -1,11 +1,17 @@
+using AccountingSystem.API.Configuration;
 using AccountingSystem.API.Data;
 using AccountingSystem.API.Identity;
 using AccountingSystem.API.Models;
 using AccountingSystem.API.Services.Interfaces;
 using AccountingSystem.Shared.DTOs;
+using AccountingSystem.Shared.Validation;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using System.Text;
+using System.Transactions;
 
 namespace AccountingSystem.API.Controllers
 {
@@ -15,17 +21,32 @@ namespace AccountingSystem.API.Controllers
     public class SuperAdminController : ControllerBase
     {
         private readonly AccountingDbContext _context;
+        private readonly IdentityAuthDbContext _identityContext;
         private readonly ILogger<SuperAdminController> _logger;
         private readonly ILegacyIdentityBridgeService _identityBridgeService;
+        private readonly IIdentityAccountService _identityAccountService;
+        private readonly IAccountEmailService _accountEmailService;
+        private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IConfiguration _configuration;
 
         public SuperAdminController(
             AccountingDbContext context,
             ILogger<SuperAdminController> logger,
-            ILegacyIdentityBridgeService identityBridgeService)
+            ILegacyIdentityBridgeService identityBridgeService,
+            IdentityAuthDbContext identityContext,
+            IIdentityAccountService identityAccountService,
+            IAccountEmailService accountEmailService,
+            UserManager<ApplicationUser> userManager,
+            IConfiguration configuration)
         {
             _context = context;
+            _identityContext = identityContext;
             _logger = logger;
             _identityBridgeService = identityBridgeService;
+            _identityAccountService = identityAccountService;
+            _accountEmailService = accountEmailService;
+            _userManager = userManager;
+            _configuration = configuration;
         }
 
         private int GetCurrentUserId() => int.Parse(User.FindFirst("UserId")?.Value ?? "0");
@@ -239,6 +260,191 @@ namespace AccountingSystem.API.Controllers
             return Ok(users);
         }
 
+        [HttpGet("superadmins")]
+        public async Task<IActionResult> GetSuperAdminAccounts()
+        {
+            var superAdminRole = await GetSuperAdminRoleAsync();
+            var currentUserId = GetCurrentUserId();
+
+            var accounts = await _context.Users
+                .IgnoreQueryFilters()
+                .Where(user => user.RoleId == superAdminRole.Id && !user.IsDeleted)
+                .OrderByDescending(user => user.IsActive && user.Status == "Active")
+                .ThenBy(user => user.FullName)
+                .ToListAsync();
+
+            var legacyIds = accounts.Select(account => account.Id).ToList();
+            var identityUsers = await _identityContext.Users
+                .AsNoTracking()
+                .Where(user => user.LegacyUserId.HasValue && legacyIds.Contains(user.LegacyUserId.Value))
+                .ToDictionaryAsync(user => user.LegacyUserId!.Value);
+
+            var response = accounts.Select(account =>
+            {
+                identityUsers.TryGetValue(account.Id, out var identityUser);
+                return new SuperAdminAccountDTO
+                {
+                    Id = account.Id,
+                    FullName = account.FullName,
+                    Email = account.Email,
+                    IsActive = account.IsActive,
+                    Status = account.Status,
+                    CreatedAt = account.CreatedAt,
+                    EmailConfirmed = identityUser?.EmailConfirmed ?? false,
+                    IsCurrentUser = account.Id == currentUserId
+                };
+            }).ToList();
+
+            return Ok(response);
+        }
+
+        [HttpPost("superadmins")]
+        public async Task<IActionResult> CreateSuperAdmin([FromBody] CreateSuperAdminDTO dto)
+        {
+            var email = dto.Email.Trim();
+            var fullName = dto.FullName.Trim();
+
+            if (!PasswordPolicy.TryValidate(dto.Password, out var passwordValidationMessage))
+            {
+                return BadRequest(passwordValidationMessage);
+            }
+
+            if (!string.Equals(dto.Password, dto.ConfirmPassword, StringComparison.Ordinal))
+            {
+                return BadRequest("Passwords do not match.");
+            }
+
+            if (await EmailExistsAsync(email))
+            {
+                return BadRequest("Email is already in use.");
+            }
+
+            var hostCompanyId = await GetHostCompanyId();
+            if (hostCompanyId == 0)
+            {
+                return BadRequest("Host Operations company is not configured.");
+            }
+
+            var superAdminRole = await GetSuperAdminRoleAsync();
+            var backupSuperAdmin = new User
+            {
+                CompanyId = hostCompanyId,
+                Email = email,
+                FullName = fullName,
+                RoleId = superAdminRole.Id,
+                Role = superAdminRole,
+                PasswordHash = string.Empty,
+                PasswordSalt = null,
+                IsActive = true,
+                Status = "Active"
+            };
+
+            using (var transaction = CreateTransactionScope())
+            {
+                _context.Users.Add(backupSuperAdmin);
+                await _context.SaveChangesAsync();
+
+                await _identityAccountService.EnsureProvisionedAsync(
+                    CreateIdentitySnapshot(
+                        backupSuperAdmin,
+                        requireEmailConfirmation: true,
+                        emailConfirmed: false),
+                    dto.Password);
+
+                transaction.Complete();
+            }
+
+            var confirmationSent = await TrySendSuperAdminConfirmationEmailAsync(backupSuperAdmin);
+            await LogSuperAdminAction(
+                "SUPERADMIN-CREATE",
+                "SuperAdminAccount",
+                backupSuperAdmin.Id,
+                $"{backupSuperAdmin.FullName} ({backupSuperAdmin.Email})",
+                string.Empty,
+                "Active",
+                confirmationSent
+                    ? "Backup SuperAdmin account created. Email confirmation sent; MFA setup is recommended."
+                    : "Backup SuperAdmin account created. Email confirmation could not be sent; use resend confirmation from the profile or confirmation page.");
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = confirmationSent
+                    ? "Backup SuperAdmin created. Ask them to confirm email and enable MFA."
+                    : "Backup SuperAdmin created, but the confirmation email could not be sent. Ask them to use resend confirmation."
+            });
+        }
+
+        [HttpPut("superadmins/{id}/status")]
+        public async Task<IActionResult> UpdateSuperAdminStatus(int id, [FromBody] UpdateUserStatusDTO dto)
+        {
+            var target = await _context.Users
+                .IgnoreQueryFilters()
+                .Include(user => user.Role)
+                .FirstOrDefaultAsync(user => user.Id == id && !user.IsDeleted);
+
+            if (target?.Role?.Name != "SuperAdmin")
+            {
+                return NotFound("SuperAdmin account not found.");
+            }
+
+            var validStatuses = new[] { "Active", "Blocked" };
+            if (!validStatuses.Contains(dto.Status))
+            {
+                return BadRequest("Invalid status. SuperAdmin accounts can be Active or Blocked.");
+            }
+
+            var oldStatus = target.Status;
+            if (string.Equals(oldStatus, dto.Status, StringComparison.Ordinal))
+            {
+                return Ok(new { message = $"SuperAdmin '{target.Email}' is already {dto.Status}." });
+            }
+
+            var disabling = dto.Status != "Active";
+            if (disabling && target.Id == GetCurrentUserId())
+            {
+                return BadRequest("You cannot disable your own SuperAdmin account.");
+            }
+
+            if (disabling && await IsLastActiveSuperAdminAsync(target.Id))
+            {
+                await LogSuperAdminAction(
+                    "SUPERADMIN-LAST-ADMIN-PROTECTION",
+                    "SuperAdminAccount",
+                    target.Id,
+                    $"{target.FullName} ({target.Email})",
+                    oldStatus,
+                    dto.Status,
+                    "Blocked attempt to disable the last active SuperAdmin account.");
+                await _context.SaveChangesAsync();
+
+                return BadRequest("At least one active SuperAdmin account must remain.");
+            }
+
+            target.Status = dto.Status;
+            target.IsActive = dto.Status == "Active";
+
+            using (var transaction = CreateTransactionScope())
+            {
+                await _context.SaveChangesAsync();
+                await _identityAccountService.SyncExistingAsync(CreateIdentitySnapshot(target));
+
+                await LogSuperAdminAction(
+                    target.IsActive ? "SUPERADMIN-ENABLE" : "SUPERADMIN-DISABLE",
+                    "SuperAdminAccount",
+                    target.Id,
+                    $"{target.FullName} ({target.Email})",
+                    oldStatus,
+                    dto.Status,
+                    $"SuperAdmin account '{target.Email}' status changed from {oldStatus} to {dto.Status}.");
+                await _context.SaveChangesAsync();
+
+                transaction.Complete();
+            }
+
+            return Ok(new { message = $"SuperAdmin '{target.Email}' is now {dto.Status}." });
+        }
+
         [HttpPut("users/{id}/status")]
         public async Task<IActionResult> UpdateUserStatus(int id, [FromBody] UpdateUserStatusDTO dto)
         {
@@ -323,6 +529,123 @@ namespace AccountingSystem.API.Controllers
             return Ok(logs);
         }
 
+        private async Task<Role> GetSuperAdminRoleAsync()
+        {
+            return await _context.Roles
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(role => role.Name == "SuperAdmin")
+                ?? throw new InvalidOperationException("System role 'SuperAdmin' is missing.");
+        }
+
+        private async Task<bool> EmailExistsAsync(string email)
+        {
+            var normalizedEmail = _userManager.NormalizeEmail(email);
+            if (string.IsNullOrWhiteSpace(normalizedEmail))
+            {
+                return true;
+            }
+
+            var legacyExists = await _context.Users
+                .IgnoreQueryFilters()
+                .AnyAsync(user => user.Email.ToUpper() == normalizedEmail && !user.IsDeleted);
+
+            if (legacyExists)
+            {
+                return true;
+            }
+
+            return await _identityContext.Users.AnyAsync(user => user.NormalizedEmail == normalizedEmail);
+        }
+
+        private async Task<bool> IsLastActiveSuperAdminAsync(int targetUserId)
+        {
+            var superAdminRole = await GetSuperAdminRoleAsync();
+            var activeSuperAdmins = await _context.Users
+                .IgnoreQueryFilters()
+                .CountAsync(user =>
+                    user.RoleId == superAdminRole.Id &&
+                    !user.IsDeleted &&
+                    user.IsActive &&
+                    user.Status == "Active" &&
+                    user.Id != targetUserId);
+
+            return activeSuperAdmins == 0;
+        }
+
+        private async Task<bool> TrySendSuperAdminConfirmationEmailAsync(User superAdmin)
+        {
+            try
+            {
+                var identityUser = await _identityAccountService.FindByLegacyUserIdAsync(superAdmin.Id)
+                    ?? throw new InvalidOperationException($"Identity user was not found for SuperAdmin {superAdmin.Id}.");
+
+                var token = await _userManager.GenerateEmailConfirmationTokenAsync(identityUser);
+                var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+                var confirmationLink = BuildEmailConfirmationLink(identityUser.Email!, encodedToken);
+
+                await _accountEmailService.SendEmailConfirmationAsync(
+                    identityUser.Email!,
+                    identityUser.FullName,
+                    confirmationLink);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send backup SuperAdmin confirmation email for user {UserId}.", superAdmin.Id);
+                return false;
+            }
+        }
+
+        private string BuildEmailConfirmationLink(string email, string encodedToken)
+        {
+            var clientBaseUrl = ResolveClientBaseUrl();
+            return $"{clientBaseUrl}/confirm-email?email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(encodedToken)}";
+        }
+
+        private string ResolveClientBaseUrl()
+        {
+            var request = HttpContext?.Request;
+            if (request != null &&
+                TryNormalizeAbsoluteBaseUrl(request.Headers.Origin.ToString(), out var originBaseUrl))
+            {
+                return originBaseUrl!;
+            }
+
+            if (request != null &&
+                TryNormalizeAbsoluteBaseUrl(request.Headers.Referer.ToString(), out var refererBaseUrl))
+            {
+                return refererBaseUrl!;
+            }
+
+            var configuredBaseUrl = NormalizeBaseUrl(_configuration["AppUrls:ClientBaseUrl"]);
+            if (!string.IsNullOrWhiteSpace(configuredBaseUrl))
+            {
+                return configuredBaseUrl;
+            }
+
+            throw new InvalidOperationException(StartupConfigurationValidator.BuildMissingValueMessage("AppUrls:ClientBaseUrl"));
+        }
+
+        private static bool TryNormalizeAbsoluteBaseUrl(string? value, out string? normalizedBaseUrl)
+        {
+            normalizedBaseUrl = null;
+            if (string.IsNullOrWhiteSpace(value) ||
+                !Uri.TryCreate(value, UriKind.Absolute, out var absoluteUri) ||
+                (absoluteUri.Scheme != Uri.UriSchemeHttp && absoluteUri.Scheme != Uri.UriSchemeHttps))
+            {
+                return false;
+            }
+
+            normalizedBaseUrl = NormalizeBaseUrl(absoluteUri.GetLeftPart(UriPartial.Authority));
+            return true;
+        }
+
+        private static string NormalizeBaseUrl(string? baseUrl) =>
+            string.IsNullOrWhiteSpace(baseUrl)
+                ? string.Empty
+                : baseUrl.Trim().TrimEnd('/');
+
         private Task LogSuperAdminAction(string action, string targetType, int targetId, string targetName,
             string oldValue, string newValue, string details)
         {
@@ -344,7 +667,15 @@ namespace AccountingSystem.API.Controllers
             return Task.CompletedTask;
         }
 
-        private static LegacyIdentityUserSnapshot CreateIdentitySnapshot(User user) =>
+        private static TransactionScope CreateTransactionScope()
+        {
+            return new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
+        }
+
+        private static LegacyIdentityUserSnapshot CreateIdentitySnapshot(
+            User user,
+            bool? requireEmailConfirmation = null,
+            bool? emailConfirmed = null) =>
             new(
                 user.Id,
                 user.CompanyId,
@@ -353,6 +684,8 @@ namespace AccountingSystem.API.Controllers
                 user.Status,
                 user.IsActive,
                 user.IsDeleted,
-                user.Role.Name);
+                user.Role.Name,
+                requireEmailConfirmation,
+                emailConfirmed);
     }
 }

@@ -1,5 +1,6 @@
 ﻿@page "/superadmin/users"
 @using AccountingSystem.Shared.DTOs
+@using AccountingSystem.Shared.Validation
 @using AccountingSystem.Client.Services
 @using AccountingSystem.Client.Shared.Dialogs
 @using MudBlazor
@@ -178,14 +179,24 @@
                 Manage all users across all tenant companies.
             </p>
         </div>
-        <MudButton Variant="Variant.Outlined"
-                   Class="shadcn-btn-outline"
-                   StartIcon="@Icons.Material.Outlined.Refresh"
-                   Size="Size.Small"
-                   OnClick="LoadData"
-                   Disabled="isLoading">
-            Refresh Data
-        </MudButton>
+        <div class="d-flex flex-wrap gap-2">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Outlined.AdminPanelSettings"
+                       Size="Size.Small"
+                       OnClick="ToggleCreateSuperAdmin"
+                       Disabled="isLoading">
+                Add Backup SuperAdmin
+            </MudButton>
+            <MudButton Variant="Variant.Outlined"
+                       Class="shadcn-btn-outline"
+                       StartIcon="@Icons.Material.Outlined.Refresh"
+                       Size="Size.Small"
+                       OnClick="LoadData"
+                       Disabled="isLoading">
+                Refresh Data
+            </MudButton>
+        </div>
     </div>
 
     @if (isLoading)
@@ -200,6 +211,149 @@
     }
     else
     {
+        <MudCard Elevation="0" Outlined="true" Class="shadcn-card mb-6">
+            <MudCardContent Class="pa-4">
+                <div class="d-flex flex-column flex-sm-row justify-space-between align-start align-sm-center gap-3 mb-4">
+                    <div>
+                        <div style="font-size: 1.125rem; font-weight: 600; color: var(--text-main);">System Administrators</div>
+                        <div style="font-size: 0.875rem; color: var(--text-muted);">Maintain at least one backup SuperAdmin for account recovery and governance continuity.</div>
+                    </div>
+                    <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined">
+                        Active: @superAdmins.Count(admin => admin.Status == "Active" && admin.IsActive)
+                    </MudChip>
+                </div>
+
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4">
+                    New SuperAdmins must confirm email before using Email OTP MFA. Authenticator App MFA and Email OTP MFA can be enabled independently from the profile.
+                </MudAlert>
+
+                @if (showCreateSuperAdmin)
+                {
+                    <MudPaper Outlined="true" Class="pa-4 mb-4" Style="background: var(--bg-background);">
+                        <EditForm Model="@createSuperAdminModel" OnValidSubmit="HandleCreateSuperAdminAsync">
+                            <DataAnnotationsValidator />
+                            <MudGrid Spacing="3">
+                                <MudItem xs="12" md="3">
+                                    <MudTextField Label="Full name"
+                                                  @bind-Value="createSuperAdminModel.FullName"
+                                                  For="@(() => createSuperAdminModel.FullName)"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense"
+                                                  Class="shadcn-input" />
+                                </MudItem>
+                                <MudItem xs="12" md="3">
+                                    <MudTextField Label="Email"
+                                                  @bind-Value="createSuperAdminModel.Email"
+                                                  For="@(() => createSuperAdminModel.Email)"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense"
+                                                  Class="shadcn-input" />
+                                </MudItem>
+                                <MudItem xs="12" md="3">
+                                    <MudTextField Label="Temporary password"
+                                                  @bind-Value="createSuperAdminModel.Password"
+                                                  For="@(() => createSuperAdminModel.Password)"
+                                                  InputType="InputType.Password"
+                                                  HelperText="@PasswordPolicy.Description"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense"
+                                                  Class="shadcn-input" />
+                                </MudItem>
+                                <MudItem xs="12" md="3">
+                                    <MudTextField Label="Confirm password"
+                                                  @bind-Value="createSuperAdminModel.ConfirmPassword"
+                                                  For="@(() => createSuperAdminModel.ConfirmPassword)"
+                                                  InputType="InputType.Password"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense"
+                                                  Class="shadcn-input" />
+                                </MudItem>
+                            </MudGrid>
+
+                            <div class="d-flex flex-wrap gap-3 justify-end mt-4">
+                                <MudButton Variant="Variant.Text"
+                                           Color="Color.Secondary"
+                                           Disabled="@isSuperAdminSubmitting"
+                                           OnClick="CancelCreateSuperAdmin">
+                                    Cancel
+                                </MudButton>
+                                <MudButton ButtonType="ButtonType.Submit"
+                                           Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Disabled="@isSuperAdminSubmitting">
+                                    @(isSuperAdminSubmitting ? "Creating..." : "Create Backup SuperAdmin")
+                                </MudButton>
+                            </div>
+                        </EditForm>
+                    </MudPaper>
+                }
+
+                <MudTable Items="@superAdmins" Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm" Class="shadcn-table">
+                    <HeaderContent>
+                        <MudTh>Name</MudTh>
+                        <MudTh>Email</MudTh>
+                        <MudTh>Email Confirmation</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Created</MudTh>
+                        <MudTh Style="text-align: right;">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate Context="admin">
+                        <MudTd DataLabel="Name">
+                            <div class="d-flex align-center gap-2" style="font-weight: 500; color: var(--text-main);">
+                                <MudIcon Icon="@Icons.Material.Outlined.AdminPanelSettings" Size="Size.Small" Style="color: var(--text-muted);" />
+                                @admin.FullName
+                                @if (admin.IsCurrentUser)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">You</MudChip>
+                                }
+                            </div>
+                        </MudTd>
+                        <MudTd DataLabel="Email">
+                            <div style="color: var(--text-muted); font-size: 0.875rem;">@admin.Email</div>
+                        </MudTd>
+                        <MudTd DataLabel="Email Confirmation">
+                            <span class="shadcn-badge @(admin.EmailConfirmed ? "badge-green" : "badge-orange")">
+                                @(admin.EmailConfirmed ? "Confirmed" : "Pending")
+                            </span>
+                        </MudTd>
+                        <MudTd DataLabel="Status">
+                            <span class="shadcn-badge @GetStatusBadgeClass(admin.Status)">
+                                @admin.Status
+                            </span>
+                        </MudTd>
+                        <MudTd DataLabel="Created" Style="white-space: nowrap;">
+                            <div style="color: var(--text-muted); font-size: 0.875rem;">@admin.CreatedAt.ToString("MMM dd, yyyy")</div>
+                        </MudTd>
+                        <MudTd DataLabel="Actions" Style="text-align: right;">
+                            <MudMenu Icon="@Icons.Material.Outlined.MoreVert" Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                                @if (admin.Status != "Active")
+                                {
+                                    <MudMenuItem Icon="@Icons.Material.Outlined.CheckCircleOutline"
+                                                 OnClick="@(() => ConfirmActivateSuperAdmin(admin))">
+                                        Activate
+                                    </MudMenuItem>
+                                }
+                                @if (admin.Status == "Active")
+                                {
+                                    <MudMenuItem Icon="@Icons.Material.Outlined.Block"
+                                                 Disabled="@(admin.IsCurrentUser || IsLastActiveSuperAdmin(admin))"
+                                                 Style="color: var(--color-destructive);"
+                                                 OnClick="@(() => ConfirmBlockSuperAdmin(admin))">
+                                        Block
+                                    </MudMenuItem>
+                                }
+                            </MudMenu>
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                            No SuperAdmin accounts found.
+                        </div>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudCardContent>
+        </MudCard>
+
         <div class="sa-stats-grid">
             <div class="sa-metric-card">
                 <div class="sa-metric-header">
@@ -367,7 +521,11 @@
 
 @code {
     private List<GlobalUserDTO> users = new List<GlobalUserDTO>();
+    private List<SuperAdminAccountDTO> superAdmins = new List<SuperAdminAccountDTO>();
+    private CreateSuperAdminDTO createSuperAdminModel = new();
     private bool isLoading = true;
+    private bool showCreateSuperAdmin;
+    private bool isSuperAdminSubmitting;
     private string searchString = "";
     private string statusFilter = "All";
     private string roleFilter = "All";
@@ -383,6 +541,7 @@
         try
         {
             users = await SuperAdminService.GetAllUsersAsync();
+            superAdmins = await SuperAdminService.GetSuperAdminAccountsAsync();
         }
         catch (Exception ex)
         {
@@ -393,6 +552,82 @@
         {
             isLoading = false;
         }
+    }
+
+    private void ToggleCreateSuperAdmin()
+    {
+        showCreateSuperAdmin = !showCreateSuperAdmin;
+        if (!showCreateSuperAdmin)
+        {
+            createSuperAdminModel = new CreateSuperAdminDTO();
+        }
+    }
+
+    private void CancelCreateSuperAdmin()
+    {
+        showCreateSuperAdmin = false;
+        createSuperAdminModel = new CreateSuperAdminDTO();
+    }
+
+    private async Task HandleCreateSuperAdminAsync()
+    {
+        isSuperAdminSubmitting = true;
+        try
+        {
+            await SuperAdminService.CreateSuperAdminAsync(createSuperAdminModel);
+            Snackbar.Add("Backup SuperAdmin created. Ask them to confirm email and enable MFA.", Severity.Success);
+            CancelCreateSuperAdmin();
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to create backup SuperAdmin.");
+            Snackbar.Add("Unable to create backup SuperAdmin. Please verify the account details and try again.", Severity.Error);
+        }
+        finally
+        {
+            isSuperAdminSubmitting = false;
+        }
+    }
+
+    private async Task ChangeSuperAdminStatus(SuperAdminAccountDTO admin, string newStatus)
+    {
+        try
+        {
+            await SuperAdminService.UpdateSuperAdminStatusAsync(admin.Id, newStatus);
+            admin.Status = newStatus;
+            admin.IsActive = newStatus == "Active";
+            Snackbar.Add($"SuperAdmin '{admin.Email}' is now {newStatus}.", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to update SuperAdmin status for user id {UserId}.", admin.Id);
+            Snackbar.Add("Unable to update SuperAdmin status. The last active SuperAdmin cannot be disabled.", Severity.Error);
+            await LoadData();
+        }
+    }
+
+    private async Task ConfirmActivateSuperAdmin(SuperAdminAccountDTO admin)
+    {
+        var result = await ShowConfirmDialog(
+            $"Activate SuperAdmin '{admin.FullName}'?",
+            $"{admin.Email} will regain platform-level governance access.",
+            "Activate",
+            Color.Success);
+
+        if (result) await ChangeSuperAdminStatus(admin, "Active");
+    }
+
+    private async Task ConfirmBlockSuperAdmin(SuperAdminAccountDTO admin)
+    {
+        var result = await ShowConfirmDialog(
+            $"Block SuperAdmin '{admin.FullName}'?",
+            $"{admin.Email} will be prevented from signing in. At least one other active SuperAdmin must remain.",
+            "Block",
+            Color.Error);
+
+        if (result) await ChangeSuperAdminStatus(admin, "Blocked");
     }
 
     private async Task ChangeUserStatus(GlobalUserDTO user, string newStatus)
@@ -452,6 +687,21 @@
         "Management" => "badge-slate",
         _            => "badge-slate"
     };
+
+    private string GetStatusBadgeClass(string? status) => status switch
+    {
+        "Active" => "badge-green",
+        "Restricted" => "badge-orange",
+        "Blocked" => "badge-red",
+        _ => "badge-slate"
+    };
+
+    private bool IsLastActiveSuperAdmin(SuperAdminAccountDTO admin)
+    {
+        return admin.Status == "Active" &&
+               admin.IsActive &&
+               superAdmins.Count(candidate => candidate.Status == "Active" && candidate.IsActive) <= 1;
+    }
 
     private async Task<bool> ShowConfirmDialog(string content, string subText, string buttonText, Color color)
     {
