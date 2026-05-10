@@ -35,26 +35,8 @@
         border-radius: var(--radius-md);
     }
 
-    .change-summary {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.75rem;
-        min-width: 0;
-    }
-
-    .change-summary-text {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--text-muted);
-        font-size: 0.875rem;
-    }
-
     @@media (max-width: 599px) {
         .desktop-skeleton { display: none !important; }
-        .change-summary-text { white-space: normal; }
     }
 
     @@media (min-width: 600px) {
@@ -224,7 +206,7 @@
                     <MudTh><MudTableSortLabel SortBy="new Func<SuperAdminAuditLogDTO, object>(x => x.Action)">Action</MudTableSortLabel></MudTh>
                     <MudTh><MudTableSortLabel SortBy="new Func<SuperAdminAuditLogDTO, object>(x => x.TargetType)">Target Type</MudTableSortLabel></MudTh>
                     <MudTh><MudTableSortLabel SortBy="new Func<SuperAdminAuditLogDTO, object>(x => x.TargetName)">Target</MudTableSortLabel></MudTh>
-                    <MudTh Style="text-align:right">Change/Details</MudTh>
+                    <MudTh Style="text-align:right">Details</MudTh>
                 </HeaderContent>
                 <RowTemplate Context="context">
                     <MudTd DataLabel="Timestamp" Style="color: var(--text-muted); font-size: 0.875rem; white-space: nowrap;">
@@ -245,14 +227,11 @@
                     <MudTd DataLabel="Target">
                         <span style="font-weight: 500; color: var(--text-main);">@context.TargetName</span>
                     </MudTd>
-                    <MudTd DataLabel="Change/Details" Style="text-align:right">
-                        <div class="change-summary">
-                            <span class="change-summary-text">@GetChangeSummary(context)</span>
-                            <MudIconButton Icon="@Icons.Material.Outlined.Visibility"
-                                           Size="Size.Small"
-                                           Class="shadcn-icon-btn"
-                                           OnClick="@(async () => await ViewDetails(context))" />
-                        </div>
+                    <MudTd DataLabel="Details" Style="text-align:right">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Visibility"
+                                       Size="Size.Small"
+                                       Class="shadcn-icon-btn"
+                                       OnClick="@(async () => await ViewDetails(context))" />
                     </MudTd>
                 </RowTemplate>
                 <PagerContent>
@@ -450,35 +429,4 @@
         _ => targetType
     };
 
-    private static string GetChangeSummary(SuperAdminAuditLogDTO log)
-    {
-        if (!string.IsNullOrWhiteSpace(log.OldValue) || !string.IsNullOrWhiteSpace(log.NewValue))
-        {
-            return $"{BlankIfMissing(log.OldValue)} -> {BlankIfMissing(log.NewValue)}";
-        }
-
-        var details = GetSafeDetails(log.Details);
-        if (details.Length <= 120)
-        {
-            return details;
-        }
-
-        return $"{details[..117]}...";
-    }
-
-    private static string GetSafeDetails(string details)
-    {
-        if (string.IsNullOrWhiteSpace(details))
-        {
-            return "No details";
-        }
-
-        var sensitiveMarkers = new[] { "password=", "otp=", "token=", "secret=", "recoverycode=", "captcha=" };
-        return sensitiveMarkers.Any(marker => details.Contains(marker, StringComparison.OrdinalIgnoreCase))
-            ? "[Sensitive detail hidden]"
-            : details;
-    }
-
-    private static string BlankIfMissing(string value) =>
-        string.IsNullOrWhiteSpace(value) ? "N/A" : value;
 }
