@@ -3,6 +3,7 @@ namespace AccountingSystem.API.Security
     internal sealed class AuthFailureException : Exception
     {
         internal const string DefaultPublicMessage = "Invalid email or password. Please try again later.";
+        internal const string LockoutPublicMessage = "Your account is temporarily locked due to repeated failed login attempts. Please try again later.";
 
         internal AuthFailureException(
             string internalReason,

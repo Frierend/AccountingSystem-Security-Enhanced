@@ -59,8 +59,9 @@
   - lockout after 5 failed attempts
   - temporary demo lockout duration: 5 minutes
   - login reCAPTCHA is always shown and required before credential processing
+  - locked existing accounts show a safe temporary-lockout message with approximate remaining minutes
   - reCAPTCHA public site key is embedded in the Blazor client because it is public; the secret key stays server-side
-  - endpoint-specific rate limiting on auth routes.
+  - endpoint-specific rate limiting on auth routes, including login, registration, password recovery, email confirmation, MFA, Email OTP, and SuperAdmin step-up Email OTP send.
 - Optional MFA:
   - Authenticator App MFA with recovery codes
   - Email OTP MFA to a confirmed email address
@@ -78,6 +79,7 @@
 - **Data handling policy**: passwords are not stored in plaintext; OTP values, recovery codes, CAPTCHA tokens, JWTs, and secrets are not logged; EF Core is used for database access; HTTPS redirection is enabled in API startup.
 - **Monitoring policy**: security-relevant events are logged through tenant audit logs and SuperAdmin governance logs, including SuperAdmin-account auth/security events.
 - **SuperAdmin governance policy**: creating/enabling/disabling SuperAdmin accounts requires step-up verification and a required reason that is recorded in SuperAdmin audit logs.
+- **Application-layer abuse policy**: reCAPTCHA, account lockout, rate limiting, and audit logs reduce brute-force and automated abuse, but they do not fully prevent network-level DoS/DDoS attacks. Production DDoS protection requires reverse proxy limits, firewall/WAF, CDN/cloud protection, monitoring, and alerting.
 
 ## Code Auditing Tooling Evidence (CI)
 
@@ -93,10 +95,10 @@
 ## Known Limitations and Recommended Improvements
 
 - **Known Limitation**: Email OTP challenges are stored in memory for this demo build; pending codes are lost if the API restarts.
-- **Known Limitation**: JWT is stored in browser local storage; this increases token theft impact if XSS is introduced.
+- **Known Limitation**: JWT is stored in browser local storage; a user may remain logged in after a local app restart until manual logout or the configured 60-minute token expiry, and token theft impact increases if XSS is introduced.
 - **Recommended Improvement**: continue standardizing auth error responses to safer response envelopes where legacy endpoints still use broad `BadRequest` handling.
 - **Recommended Improvement**: increase CI security enforcement from report-first mode to policy gates after vulnerability/secret baseline remediation.
-- **Recommended Improvement**: add refresh token and token revocation strategy for stronger session control.
+- **Recommended Improvement**: add refresh-token/session revocation and server-side token invalidation for stronger session control.
 
 ## User Roles and Permissions
 

@@ -53,9 +53,16 @@ Default security controls from configuration and startup:
 
 - Lockout threshold: 5 failed attempts.
 - Lockout duration: 5 minutes for demo/presentation.
-- The login UI intentionally avoids showing exact attempts left or a countdown. It uses generic messages to reduce attacker feedback.
+- The login UI intentionally avoids showing exact attempts left. Locked existing accounts receive a safe temporary-lockout message with approximate remaining minutes for demo clarity.
 - Login reCAPTCHA is always required before credential processing; account lockout still applies after the configured failed attempts.
-- Endpoint-specific rate limits exist for login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, and MFA management.
+- Endpoint-specific rate limits exist for login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, Email OTP flows, MFA management, and SuperAdmin step-up Email OTP send.
+
+## DoS and DDoS Scope
+
+- Application-layer controls include login reCAPTCHA, registration reCAPTCHA, failed-login tracking, account lockout, rate limiting, and audit logs.
+- These controls help reduce brute-force attempts and automated abuse.
+- They do not fully stop network-level DoS or DDoS attacks.
+- Production DoS/DDoS protection requires deployment controls such as reverse proxy limits, firewall/WAF, CDN/cloud DDoS protection, monitoring, and alerting.
 
 ## Secret and Configuration Handling
 
@@ -93,13 +100,13 @@ Default security controls from configuration and startup:
 ### High
 
 1. **Known Limitation:** JWT token is stored in browser local storage.
-   - Risk: token exposure risk increases if XSS is introduced.
+   - Risk: a user may remain logged in after a local app restart until manual logout or the configured 60-minute token expiry, and token exposure risk increases if XSS is introduced.
 2. **Known Limitation:** Email OTP challenge storage is in-memory for demo use.
    - Risk: pending OTP challenges are lost if the API restarts or scales across multiple instances without shared state.
 
 ### Medium
 
-1. **Recommended Improvement:** Add refresh-token and revocation controls.
+1. **Recommended Improvement:** Add refresh-token, session revocation, and server-side token invalidation controls.
    - Current model relies on JWT expiry without dedicated revocation store.
 2. **Recommended Improvement:** Reduce duplicate JWT validation paths.
    - Both JWT bearer auth and custom middleware validation are active.
@@ -146,4 +153,4 @@ Default security controls from configuration and startup:
 
 ## Conclusion
 
-The project has a substantial implemented authentication and authorization foundation for IT16, including account recovery, email confirmation, optional independently managed Authenticator App MFA, optional Email OTP MFA, recovery codes, lockout, always-on login reCAPTCHA, rate limiting, SuperAdmin governance step-up verification for sensitive SuperAdmin actions, audit logging, PayMongo webhook signature validation, and CI-backed security-tooling evidence. If a SuperAdmin account is compromised, operational response should use a trusted backup SuperAdmin to review governance logs, disable suspicious accounts, reset credentials, and rotate affected secrets as needed. The most important remaining hardening items are stronger token lifecycle controls, production-grade/shared Email OTP challenge storage, and tightening CI security enforcement thresholds after baseline remediation.
+The project has a substantial implemented authentication and authorization foundation for IT16, including account recovery, email confirmation, optional independently managed Authenticator App MFA, optional Email OTP MFA, recovery codes, lockout, always-on login reCAPTCHA, application-layer rate limiting, SuperAdmin governance step-up verification for sensitive SuperAdmin actions, audit logging, PayMongo webhook signature validation, and CI-backed security-tooling evidence. These controls reduce brute-force and automated abuse but do not fully prevent network-level DDoS. If a SuperAdmin account is compromised, operational response should use a trusted backup SuperAdmin to review governance logs, disable suspicious accounts, reset credentials, and rotate affected secrets as needed. The most important remaining hardening items are stronger token lifecycle controls, production-grade/shared Email OTP challenge storage, infrastructure-level DDoS protections, and tightening CI security enforcement thresholds after baseline remediation.

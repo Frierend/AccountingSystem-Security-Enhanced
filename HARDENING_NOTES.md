@@ -5,8 +5,8 @@
 The following controls are implemented in the current codebase:
 
 1. Shared password policy validation for registration and password-change paths.
-2. Account lockout tracking with configurable defaults (5 failed attempts, 5-minute demo lockout).
-3. Endpoint-level auth rate limiting (login, register-company, forgot/reset password, confirm/resend confirmation, MFA routes).
+2. Account lockout tracking with configurable defaults (5 failed attempts, 5-minute demo lockout) and safe lockout feedback with approximate remaining minutes.
+3. Endpoint-level auth rate limiting (login, register-company, forgot/reset password, confirm/resend confirmation, MFA routes, Email OTP flows, and SuperAdmin step-up Email OTP send).
 4. JWT validation settings with explicit issuer, audience, signing key, expiry, and configurable clock skew.
 5. Auth security event logging through dedicated service-level audit writes.
 6. Sanitized non-auth request logging in middleware for state-changing operations.
@@ -15,7 +15,8 @@ The following controls are implemented in the current codebase:
 9. Google reCAPTCHA v2 Checkbox for registration and every normal login attempt, with a client-side public site key and server secret read from configuration.
 10. Backup SuperAdmin management with strong-password creation, email confirmation flow, and last-active-SuperAdmin protection (the last active SuperAdmin cannot be disabled or deleted).
 11. Step-up verification for sensitive SuperAdmin governance actions (create/enable/disable SuperAdmin accounts) using password re-entry, MFA when enabled, and required reason/justification.
-12. CI security-tooling evidence via GitHub Actions:
+12. Application-layer abuse controls including reCAPTCHA, lockout, rate limiting, and audit logs.
+13. CI security-tooling evidence via GitHub Actions:
    - `.github/workflows/security-tooling-evidence.yml` (build/test, dependency vulnerability report artifact, gitleaks report-first secret scan)
    - `.github/workflows/codeql.yml` (CodeQL static analysis for C#)
 
@@ -31,6 +32,7 @@ The following controls are implemented in the current codebase:
 - The seeded/demo bootstrap SuperAdmin is email-confirmed for MFA demonstration; backup SuperAdmins follow the normal confirmation workflow.
 - OTP values, recovery codes, CAPTCHA tokens, passwords, JWTs, and secrets are not written to audit details.
 - Development email fallback logs reset/confirmation links when SMTP is not configured.
+- Application-layer controls help reduce brute-force and automated abuse but do not fully prevent network-level DoS/DDoS attacks; production protection requires reverse proxy limits, firewall/WAF, CDN/cloud DDoS protection, monitoring, and alerting.
 
 ## Incident Response Plan
 
@@ -65,14 +67,16 @@ The following controls are implemented in the current codebase:
 
 ## Known Limitations
 
-- **Known Limitation:** JWT tokens are stored in browser local storage, which increases risk if XSS exists.
+- **Known Limitation:** JWT tokens are stored in browser local storage; a user may remain logged in after a local app restart until manual logout or the configured 60-minute token expiry, and risk increases if XSS exists.
 - **Known Limitation:** Email OTP challenges are stored in memory for this demo build; pending codes are lost if the API restarts.
+- **Known Limitation:** Application-layer controls do not fully prevent network-level DoS/DDoS attacks.
 
 ## Recommended Improvements
 
 - **Recommended Improvement:** normalize auth error responses to standardized sanitized error contracts.
 - **Recommended Improvement:** use database or distributed-cache backed Email OTP challenge storage for production or multi-instance deployments.
-- **Recommended Improvement:** add refresh-token and revocation capabilities for stronger token lifecycle control.
+- **Recommended Improvement:** add refresh-token/session revocation and server-side token invalidation for stronger token lifecycle control.
+- **Recommended Improvement:** add infrastructure-level DoS/DDoS protections such as reverse proxy limits, firewall/WAF, CDN/cloud protection, monitoring, and alerting.
 - **Recommended Improvement:** tighten CI security policy gates after baseline triage (for example, fail-on-severity thresholds for dependency/secret findings).
 
 ## Evidence Checklist

@@ -620,11 +620,11 @@ Default lockout settings in configuration:
 - `AuthSecurity:Lockout:MaxFailedAccessAttempts = 5`
 - `AuthSecurity:Lockout:LockoutMinutes = 5`
 
-The login UI intentionally does not show exact attempts left or a lockout countdown. This limits attacker feedback while still showing generic user-friendly errors for CAPTCHA and temporary lockout states.
+The login UI intentionally does not show exact attempts left. Locked existing accounts receive a safe temporary-lockout message with approximate remaining minutes for demo clarity.
 
 Login reCAPTCHA is shown by default and required before credential processing. Account lockout still applies after the configured failed attempts. Login and registration render with a client-side public site key constant; no reCAPTCHA secret is exposed to the client.
 
-Rate limiting is configured per auth endpoint (login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, MFA management).
+Rate limiting is configured per auth endpoint (login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, Email OTP flows, MFA management, and SuperAdmin step-up Email OTP send).
 
 ### 8.3 Authentication Features
 
@@ -675,6 +675,8 @@ Password handling status:
 - Sensitive SuperAdmin governance audit entries include reason/justification and safe metadata, without passwords, MFA codes, Email OTP values, recovery codes, CAPTCHA tokens, JWTs, or secrets.
 - OTP values, recovery codes, CAPTCHA tokens, passwords, JWTs, and secrets are not written to audit details.
 - Local development can use a logging email sender when SMTP is not configured
+
+Application-layer abuse controls include login reCAPTCHA, registration reCAPTCHA, failed login tracking, account lockout, rate limiting, and audit logs. These reduce brute-force attempts and automated abuse, but they do not fully stop network-level DoS/DDoS attacks. Production DoS/DDoS protection requires infrastructure controls such as reverse proxy rate limiting, firewall/WAF, CDN or cloud DDoS protection, monitoring, and alerting.
 
 ### 8.7 Incident Response Plan
 
@@ -732,10 +734,11 @@ Remaining improvements:
 ### 8.11 Known Limitations and Recommended Improvements
 
 - **Known Limitation:** Email OTP challenges are stored in memory for this demo build; pending codes are lost if the API restarts.
-- **Known Limitation:** Client-side JWT storage in local storage increases risk exposure if XSS is introduced.
+- **Known Limitation:** Client-side JWT storage in local storage means a user may remain logged in after a local app restart until manual logout or the configured 60-minute token expiry, and risk exposure increases if XSS is introduced.
 - **Recommended Improvement:** Move CI security tooling from evidence-first reporting to stricter enforcement gates after remediation baseline.
-- **Recommended Improvement:** Add refresh token and server-side revocation strategy.
+- **Recommended Improvement:** Add refresh-token/session revocation and server-side token invalidation.
 - **Recommended Improvement:** Use database or distributed-cache backed Email OTP challenge storage for production or multi-instance deployments.
+- **Recommended Improvement:** Add infrastructure-level DoS/DDoS protection through reverse proxy limits, firewall/WAF, CDN/cloud protection, monitoring, and alerting.
 
 ---
 

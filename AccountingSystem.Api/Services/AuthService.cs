@@ -1000,7 +1000,7 @@ namespace AccountingSystem.API.Services
                     reason: "IdentityLockoutActive",
                     failedAttempts: lockedUser.AccessFailedCount,
                     lockoutEndUtc: lockedUser.LockoutEnd?.UtcDateTime);
-                throw new AuthFailureException("LockoutActive");
+                throw CreateLockoutFailure(lockedUser.LockoutEnd?.UtcDateTime);
             }
 
             var passwordMatches = await _userManager.CheckPasswordAsync(identityUser, password);
@@ -1030,6 +1030,8 @@ namespace AccountingSystem.API.Services
                         reason: "MaxFailedAttemptsExceeded",
                         failedAttempts: failedUser.AccessFailedCount,
                         lockoutEndUtc: failedUser.LockoutEnd?.UtcDateTime);
+
+                    throw CreateLockoutFailure(failedUser.LockoutEnd!.Value.UtcDateTime);
                 }
 
                 throw new AuthFailureException("InvalidPassword");
@@ -1057,7 +1059,7 @@ namespace AccountingSystem.API.Services
                         reason: "LockoutActive",
                         failedAttempts: user.AccessFailedCount,
                         lockoutEndUtc: user.LockoutEndUtc);
-                    throw new AuthFailureException("LockoutActive");
+                    throw CreateLockoutFailure(user.LockoutEndUtc);
                 }
 
                 user.AccessFailedCount = 0;
@@ -1106,6 +1108,8 @@ namespace AccountingSystem.API.Services
                         reason: "MaxFailedAttemptsExceeded",
                         failedAttempts: user.AccessFailedCount,
                         lockoutEndUtc: user.LockoutEndUtc);
+
+                    throw CreateLockoutFailure(user.LockoutEndUtc);
                 }
 
                 throw new AuthFailureException("InvalidPassword");
@@ -1485,6 +1489,31 @@ namespace AccountingSystem.API.Services
                 "Additional verification is required before signing in. Please complete the CAPTCHA and try again.",
                 StatusCodes.Status401Unauthorized,
                 requiresRecaptcha: true);
+        }
+
+        private static AuthFailureException CreateLockoutFailure(DateTime? lockoutEndUtc)
+        {
+            return new AuthFailureException(
+                "LockoutActive",
+                BuildLockoutPublicMessage(lockoutEndUtc));
+        }
+
+        private static string BuildLockoutPublicMessage(DateTime? lockoutEndUtc)
+        {
+            if (!lockoutEndUtc.HasValue)
+            {
+                return AuthFailureException.LockoutPublicMessage;
+            }
+
+            var remaining = lockoutEndUtc.Value - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return AuthFailureException.LockoutPublicMessage;
+            }
+
+            var minutes = Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes));
+            var minuteLabel = minutes == 1 ? "minute" : "minutes";
+            return $"{AuthFailureException.LockoutPublicMessage} Please try again in about {minutes} {minuteLabel}.";
         }
 
         private static TransactionScope CreateTransactionScope()

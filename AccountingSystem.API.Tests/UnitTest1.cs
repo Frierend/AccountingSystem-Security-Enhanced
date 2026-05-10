@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -137,6 +138,8 @@ public class SharedPasswordIdentityValidatorTests
 
 public class AuthServiceTests
 {
+    private const string LockoutPublicMessage = "Your account is temporarily locked due to repeated failed login attempts. Please try again later.";
+
     [Fact]
     public async Task LoginAsync_WhenIdentityBackedUserExists_ShouldAuthenticateWithoutLegacyPassword()
     {
@@ -363,23 +366,36 @@ public class AuthServiceTests
         }));
 
         firstException.Should().NotBeNull();
-        firstException!.Message.Should().Be("Invalid email or password. Please try again later.");
+        firstException!.Message.Should().StartWith(LockoutPublicMessage);
+        firstException.Message.Should().Contain("Please try again in about 5 minutes.");
         captcha.Verify(x => x.VerifyTokenAsync("good-token"), Times.Once);
 
         var lockedIdentityUser = await harness.IdentityContext.Users.SingleAsync(u => u.LegacyUserId == user.Id);
         lockedIdentityUser.LockoutEnd.Should().NotBeNull();
         lockedIdentityUser.LockoutEnd!.Value.Should().BeAfter(DateTimeOffset.UtcNow);
+        (lockedIdentityUser.LockoutEnd.Value - DateTimeOffset.UtcNow)
+            .Should().BeCloseTo(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(10));
 
         captcha.Invocations.Clear();
-        var lockedException = await Record.ExceptionAsync(() => service.LoginAsync(new LoginDTO
+        var lockedWrongPasswordException = await Record.ExceptionAsync(() => service.LoginAsync(new LoginDTO
+        {
+            Email = user.Email,
+            Password = "StillWrongPassword123!",
+            RecaptchaToken = "good-token"
+        }));
+
+        lockedWrongPasswordException.Should().NotBeNull();
+        lockedWrongPasswordException!.Message.Should().StartWith(LockoutPublicMessage);
+
+        var lockedCorrectPasswordException = await Record.ExceptionAsync(() => service.LoginAsync(new LoginDTO
         {
             Email = user.Email,
             Password = "LongPassword123!",
             RecaptchaToken = "good-token"
         }));
 
-        lockedException.Should().NotBeNull();
-        lockedException!.Message.Should().Be("Invalid email or password. Please try again later.");
+        lockedCorrectPasswordException.Should().NotBeNull();
+        lockedCorrectPasswordException!.Message.Should().StartWith(LockoutPublicMessage);
         captcha.Verify(x => x.VerifyTokenAsync(It.IsAny<string>()), Times.Never);
     }
 
@@ -1863,6 +1879,36 @@ public class AuthControllerTests
     }
 
     [Fact]
+    public async Task Login_WhenLockoutIsApplied_ShouldReturnSafeLockoutPayloadWithoutInternalReason()
+    {
+        var context = TestHelpers.CreateContext(tenantId: 32);
+        using var harness = TestHelpers.CreateIdentityHarness();
+        var service = TestHelpers.CreateAuthService(context, harness);
+
+        var (_, _, user) = await TestHelpers.CreateConfirmedIdentityBackedUserAsync(
+            context,
+            harness,
+            companyId: 32,
+            email: "controller-lockout@test.com");
+        await TestHelpers.SetIdentityFailedAttemptsAsync(harness, user.Id, failedAttempts: 4);
+
+        var controller = new AuthController(service);
+        var response = await controller.Login(new LoginDTO
+        {
+            Email = user.Email,
+            Password = "WrongPassword123!",
+            RecaptchaToken = "good-token"
+        });
+
+        var unauthorized = response.Should().BeOfType<UnauthorizedObjectResult>().Subject;
+        var error = TestHelpers.GetAnonymousStringValue(unauthorized.Value, "error");
+        error.Should().StartWith("Your account is temporarily locked due to repeated failed login attempts. Please try again later.");
+        error.Should().Contain("Please try again in about 5 minutes.");
+        error.Should().NotContain("LockoutActive");
+        error.Should().NotContain("IdentityLockoutActive");
+    }
+
+    [Fact]
     public async Task RegisterCompany_WhenServiceSucceeds_ShouldReturnOk()
     {
         var authService = new Mock<IAuthService>();
@@ -1873,6 +1919,35 @@ public class AuthControllerTests
         var response = await controller.RegisterCompany(new CompanyRegisterDTO());
 
         response.Should().BeOfType<OkObjectResult>();
+    }
+}
+
+public class AuthRateLimitPolicyCoverageTests
+{
+    [Theory]
+    [InlineData(typeof(AuthController), nameof(AuthController.Login), "AuthLogin")]
+    [InlineData(typeof(AuthController), nameof(AuthController.RegisterCompany), "AuthRegisterCompany")]
+    [InlineData(typeof(AuthController), nameof(AuthController.ForgotPassword), "AuthForgotPassword")]
+    [InlineData(typeof(AuthController), nameof(AuthController.ResetPassword), "AuthResetPassword")]
+    [InlineData(typeof(AuthController), nameof(AuthController.ConfirmEmail), "AuthConfirmEmail")]
+    [InlineData(typeof(AuthController), nameof(AuthController.ResendConfirmation), "AuthResendConfirmation")]
+    [InlineData(typeof(AuthController), nameof(AuthController.LoginWithMfa), "AuthLoginMfa")]
+    [InlineData(typeof(AuthController), nameof(AuthController.SendLoginEmailOtp), "AuthLoginMfa")]
+    [InlineData(typeof(AuthController), nameof(AuthController.SendEmailOtpSetupCode), "AuthMfaManage")]
+    [InlineData(typeof(AuthController), nameof(AuthController.VerifyEmailOtpSetup), "AuthMfaManage")]
+    [InlineData(typeof(SuperAdminController), nameof(SuperAdminController.SendStepUpEmailOtp), "AuthMfaManage")]
+    public void SensitiveAuthEndpoint_ShouldUseExpectedRateLimitPolicy(
+        Type controllerType,
+        string methodName,
+        string policyName)
+    {
+        var method = controllerType.GetMethods().Single(m => m.Name == methodName);
+
+        var attributes = method
+            .GetCustomAttributes(typeof(EnableRateLimitingAttribute), inherit: false)
+            .Cast<EnableRateLimitingAttribute>();
+
+        attributes.Should().ContainSingle(attribute => attribute.PolicyName == policyName);
     }
 }
 

@@ -134,6 +134,8 @@ Rate-limit configuration was added for:
 - `AuthSecurity:RateLimiting:LoginMfa`
 - `AuthSecurity:RateLimiting:MfaManage`
 
+The same MFA-management rate-limit policy also protects the SuperAdmin step-up Email OTP send endpoint.
+
 ## Key API Endpoints
 
 - `POST /api/auth/login`
@@ -161,6 +163,7 @@ Rate-limit configuration was added for:
 - SuperAdmin has no MFA exemption in this phase. If MFA is enabled on the account, the second step is required.
 - SuperAdmin can enable Email OTP MFA after confirming email, and this does not require Authenticator App MFA to be enabled.
 - Creating, enabling, and disabling SuperAdmin accounts is treated as sensitive governance and requires step-up verification plus reason/justification logging.
+- SuperAdmin step-up Email OTP send is protected by rate limiting and the Email OTP resend cooldown.
 - Backup SuperAdmin accounts are supported, and the last active SuperAdmin account cannot be disabled or deleted.
 - If a SuperAdmin account is suspected to be compromised, a trusted backup SuperAdmin should review governance logs, disable suspicious accounts, reset credentials, and rotate affected secrets as needed.
 - **Known Limitation:** MFA is currently optional and policy-based enforcement is not yet implemented across all role scenarios.

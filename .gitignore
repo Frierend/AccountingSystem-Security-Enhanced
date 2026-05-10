@@ -366,3 +366,30 @@ FodyWeavers.xsd
 AccountingSystem.Api/.env
 AccountingSystem.Api/.env.*
 !AccountingSystem.Api/.env.example
+
+# Local environment variables and secret templates
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+**/appsettings.Development.json
+
+# Local IDE, test, and coverage artifacts
+.vscode/
+.artifacts/
+coverage/
+[Cc]overage/
+**/coverage/
+**/[Cc]overage/
+
+# Local databases, certificates, and key files
+*.sqlite
+*.sqlite3
+*.db
+*.key
+*.pem
+*.crt
+*.cer
+*.p12

@@ -87,13 +87,15 @@ The seeded/demo bootstrap SuperAdmin is created with `EmailConfirmed = true` so 
 - The reCAPTCHA public site key is client-side and may appear in the Blazor auth pages.
 - `GET /api/auth/recaptcha/config` may remain available for compatibility, but login and registration do not depend on fetching the site key before rendering.
 - `Recaptcha__SecretKey` is server-only and must not appear in client files or committed configuration.
-- Account lockout still applies after the configured failed attempts, with a 5-minute demo/presentation lockout in the current configuration.
+- Account lockout still applies after the configured failed attempts, with a 5-minute demo/presentation lockout in the current configuration and safe feedback with approximate remaining minutes for locked existing accounts.
+- Auth rate limiting protects login, register-company, forgot/reset password, confirm/resend confirmation, MFA login, Email OTP flows, MFA management, and SuperAdmin step-up Email OTP send.
 - Authenticator App MFA and Email OTP MFA are optional and independently managed from the user profile.
 - Email OTP MFA requires confirmed email; the profile can resend confirmation before setup.
 - Backup SuperAdmin creation is supported, and the last active SuperAdmin account cannot be disabled or deleted.
 - Creating/enabling/disabling SuperAdmin accounts is a sensitive governance action and requires step-up verification (password re-entry, MFA when enabled, and reason/justification logging).
 - SuperAdmin governance audit logs capture step-up verification outcomes and governance actions without storing passwords, MFA codes, OTPs, recovery codes, CAPTCHA tokens, JWTs, or secrets.
 - SuperAdmin audit logs provide platform-level governance and security-event visibility for privileged account actions.
+- Application-layer controls such as reCAPTCHA, failed-login tracking, account lockout, rate limiting, and audit logs reduce brute-force and automated abuse but do not fully prevent network-level DoS/DDoS attacks.
 
 If a SuperAdmin account is suspected to be compromised, use a trusted backup SuperAdmin account to review governance logs, disable suspicious accounts, reset credentials, and rotate affected secrets when needed.
 
@@ -160,4 +162,8 @@ For this academic project, payment integration is documented and tested in **Pay
 ## Known Limitations and Recommended Improvements
 
 - **Known Limitation:** Email OTP challenges are stored in memory for this demo build; use database or distributed-cache backed storage for production or multi-instance deployments.
+- **Known Limitation:** JWT is stored in browser local storage; a user may remain logged in after local app restart until manual logout or the configured 60-minute token expiry.
+- **Known Limitation:** Application-layer controls do not fully stop network-level DoS/DDoS attacks.
+- **Recommended Improvement:** add refresh-token/session revocation, server-side token invalidation, and shorter token lifetime where appropriate.
+- **Recommended Improvement:** use reverse proxy limits, firewall/WAF, CDN/cloud DDoS protection, monitoring, and alerting for production DoS/DDoS protection.
 - **Recommended Improvement:** add automated secret scanning and configuration policy checks in CI.

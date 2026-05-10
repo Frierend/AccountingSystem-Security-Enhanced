@@ -8,6 +8,7 @@ using AccountingSystem.Shared.Validation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
@@ -426,6 +427,7 @@ namespace AccountingSystem.API.Controllers
         }
 
         [HttpPost("stepup/email/send")]
+        [EnableRateLimiting(AuthRateLimitPolicyNames.MfaManage)]
         public async Task<IActionResult> SendStepUpEmailOtp()
         {
             if (!User.IsInRole("SuperAdmin"))
