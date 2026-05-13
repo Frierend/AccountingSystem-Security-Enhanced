@@ -1,6 +1,7 @@
 # IT16/L Information Security 1 Documentation
 
 ## Project Overview
+
 This project is developed in partial fulfillment of the requirements for IT 16/L - Information Security 1.
 This documentation presents the design, implementation, and security considerations of the proposed system.
 
@@ -8,152 +9,149 @@ Prepared by: Cyril John Atillo
 Submitted to: Cyril Loyd Tomas
 
 ## System Description
-AccSys is a web-based integrated accounting and financial management system for multi-tenant company bookkeeping, reporting, payment tracking, user management, and audit monitoring. The system supports General Ledger, Accounts Payable, Accounts Receivable, financial reports, PayMongo test payment flow, tenant administration, and SuperAdmin governance while applying authentication, authorization, MFA, reCAPTCHA, account lockout, rate limiting, tenant isolation, and audit logging controls.
+
+AccSys is a web-based accounting and financial management system. It supports company and tenant records, users, invoices, bills, journal entries, payments, reports, and audit logs.
+
+The system uses authentication, role-based access control, MFA options, Google reCAPTCHA, account lockout, rate limiting, audit logs, and secure configuration practices. These controls support safer access, abuse reduction, and activity review.
 
 ## Platform and Technologies Used
+
 - Programming Language: C#
-- Framework / Environment: ASP.NET Core 8 Web API, Blazor WebAssembly, .NET 8, MudBlazor
-- Database: Microsoft SQL Server with Entity Framework Core
-- Platform: Web-based client and API system
-- Security / Integrations: ASP.NET Core Identity, JWT, Google reCAPTCHA v2 Checkbox, Authenticator App TOTP MFA, Email OTP MFA, recovery codes, SMTP email delivery, PayMongo test mode, GitHub Actions, CodeQL, and Gitleaks
+- Framework / Environment: ASP.NET Core 8 Web API, Blazor WebAssembly, .NET 8
+- Database: SQL Server with Entity Framework Core
+- Platform: Web-based system
+- Security / Integrations: ASP.NET Core Identity, JWT authentication, Google reCAPTCHA v2 Checkbox, SMTP email service, PayMongo test integration, GitHub Actions, CodeQL, Gitleaks, dependency vulnerability reporting
 
 ## Security Policies
+
 - Password Policy:
-  - Enforces strong passwords.
-  - Stores passwords as hashed values.
-  - Supports secure password reset.
-  - Periodic password update is a recommended improvement only because forced periodic password expiration is not currently implemented.
+  - Strong passwords are enforced using the implemented Identity password policy.
+  - Passwords are hashed through ASP.NET Core Identity.
+  - Password reset is supported through email.
+  - Periodic password expiration is listed as a recommended improvement.
 
 - Login Attempt Policy:
-  - Limits failed attempts.
-  - Locks accounts after exceeding the configured failed-attempt limit.
-  - Uses a 5-minute demo lockout.
-  - Shows a safe temporary-lockout message for locked existing accounts, including approximate remaining minutes for demo guidance.
-  - Does not show exact attempts left.
-  - Login reCAPTCHA is always visible and required.
-  - Registration reCAPTCHA is required.
-  - Rate limiting is applied to sensitive auth endpoints including login, register company, forgot password, reset password, email confirmation, resend confirmation, MFA login, Email OTP flows, MFA management, and SuperAdmin step-up Email OTP send.
+  - Failed login attempts are tracked.
+  - Accounts are temporarily locked after exceeding the configured failed attempt limit.
+  - The current demo lockout duration is 5 minutes.
+  - Login reCAPTCHA is visible and required.
+  - Rate limiting is applied to sensitive authentication-related endpoints.
+  - These controls help reduce repeated automated login attempts.
 
 - Data Handling Policy:
   - Passwords are hashed.
-  - OTPs, recovery codes, CAPTCHA tokens, JWTs, API keys, SMTP passwords, PayMongo keys, and other secrets are not logged.
-  - Runtime secrets are stored in environment variables or local `.env` only.
-  - Checked-in `appsettings.json` uses placeholders for sensitive values.
-  - `.env.example` remains tracked as a safe template.
+  - OTPs, recovery codes, CAPTCHA tokens, JWTs, and secrets must not be logged.
+  - Runtime secrets are stored through environment variables or local .env configuration.
+  - .env is not committed.
+  - .env.example is only a template.
 
 - Access Control Policy:
-  - Uses RBAC.
-  - Enforces tenant/company access restrictions.
-  - Restricts tenant records by company ownership.
-  - SuperAdmin governance is separated from tenant operations.
+  - RBAC is used.
+  - Tenant/company users access only authorized company resources.
+  - SuperAdmin users manage platform-level governance.
+  - The system prevents disabling/deleting the last active SuperAdmin.
   - Sensitive SuperAdmin actions require step-up verification.
-  - The system prevents disabling or deleting the last active SuperAdmin account.
+  - Backup SuperAdmin support exists.
 
 - Logging and Monitoring Policy:
-  - Tenant audit logs record company-level system and security activity.
-  - SuperAdmin governance audit logs record platform-level administrative actions.
-  - Security events include login failures, CAPTCHA checks, account lockouts, MFA challenges, step-up verification, and rate-limit rejections.
-  - Suspicious activity should be reviewed by authorized administrators.
+  - Tenant audit logs record company-level system/security activities.
+  - SuperAdmin audit logs record platform-level governance/security events.
+  - Logs must not contain passwords, OTPs, recovery codes, CAPTCHA tokens, JWTs, or secrets.
+  - Suspicious activity can be reviewed through audit logs.
 
-- Session Security Notes:
-  - JWT is stored in browser local storage.
-  - A user may remain logged in after local app restart until token expiration or manual logout because restarting the API/client does not automatically clear browser storage.
-  - Logout clears the client token.
-  - Current JWT expiry is configured at 60 minutes.
-  - Recommended production improvements include refresh-token/session revocation, server-side token invalidation, and shorter token lifetime where appropriate.
-
-- Application-Layer Abuse Protection Policy:
-  - Application-level controls include login reCAPTCHA, registration reCAPTCHA, failed login tracking, account lockout, rate limiting, and audit logs.
-  - These controls help reduce brute-force attempts and automated abuse.
-  - These controls do not fully stop network-level DoS or DDoS attacks.
-  - Full DoS/DDoS protection requires deployment and infrastructure controls such as reverse proxy rate limiting, firewall/WAF, CDN or cloud DDoS protection, monitoring, and alerting.
+Application-layer controls such as reCAPTCHA, rate limiting, account lockout, and audit logs help reduce abuse. Full DoS/DDoS protection also requires deployment-level controls such as firewall, reverse proxy limits, WAF/CDN protection, monitoring, and alerting.
 
 ## Incident Response Plan
+
 - Detection:
-Security incidents are detected through tenant audit logs, SuperAdmin audit logs, authentication security events, rate-limit events, GitHub Actions results, CodeQL findings, Gitleaks evidence, and administrator monitoring.
+  Detection is supported through audit logs, security events, GitHub Actions, CodeQL, Gitleaks, and administrator review.
 
 - Reporting:
-Incidents should be reported to the Tenant Admin, SuperAdmin/System Administrator, instructor, or responsible authority with the affected account, tenant, endpoint, time window, and observed behavior.
+  Incidents should be reported to the system administrator, SuperAdmin, or responsible authority.
 
 - Response:
-Response actions may include disabling or restricting affected accounts, using a trusted backup SuperAdmin to review governance logs, forcing password reset, rotating exposed secrets, reviewing rate-limit and lockout events, applying code fixes, and preserving evidence screenshots/logs.
+  Response actions may include account lockout, disabling suspicious accounts, password reset, using a backup SuperAdmin if needed, reviewing logs, and rotating exposed secrets if needed.
 
 - Recovery:
-Restore safe configuration, verify database and tenant data integrity, confirm login, MFA, email confirmation, reset password, PayMongo, and audit-log flows still work, then re-enable affected accounts only after validation.
+  Recovery includes restoring access, verifying data integrity, re-enabling safe accounts, and confirming that security controls are working.
 
 - Review:
-Review the root cause, confirm whether sensitive data was exposed, update documentation, add or adjust tests, improve monitoring, and record proof for IT16 submission.
+  A post-incident review should identify the cause, record lessons learned, and list future improvements.
 
 ## Code Auditing and Security Review
+
 - Tool Used:
-GitHub Actions Security Tooling Evidence workflow, CodeQL, Gitleaks, dependency vulnerability reporting, .NET build/test tools, `git status`, `git ls-files`, `.gitignore` review, and manual code inspection.
+  CodeQL, GitHub Actions Security Tooling Evidence workflow, Gitleaks, dependency vulnerability reporting, .NET build/test tools.
 
 - Usage:
-The tools are used to restore, build, test, scan source code, collect dependency vulnerability evidence, inspect secret hygiene, confirm rate-limit coverage, and verify security-sensitive behavior before documentation submission.
+  CodeQL was used as the project's code auditing/static security analysis tool through GitHub Actions. The other tools are used to provide build/test evidence, secret scanning evidence, and dependency vulnerability report evidence.
 
 - Findings:
-Manual review found that locked login attempts previously used the same generic credential message, which made demo lockout behavior unclear. Rate limiting already protected the main auth endpoints, and SuperAdmin step-up Email OTP send was added to the authenticated MFA-management rate-limit policy. Browser local storage explains why a JWT session can persist after a local app restart. Application-layer controls reduce abuse but do not fully prevent DDoS.
+  - CI project reference casing issue was fixed.
+  - Public reCAPTCHA site key was treated as client-side public value.
+  - Real secrets are kept out of source control.
+  - Existing analyzer warnings, if any, are not build blockers.
 
 - Fixes:
-Login lockout responses were updated to use a safe temporary-lockout message with approximate remaining minutes. Sensitive auth endpoint rate-limit coverage was confirmed and SuperAdmin step-up Email OTP send was protected. `.gitignore` was tightened for local secrets and generated artifacts. Documentation was updated to avoid overclaiming DoS/DDoS protection and to explain JWT/local storage session persistence.
+  - CI reference casing corrected.
+  - Gitleaks allowlist limited to public reCAPTCHA site key only when needed.
+  - Secrets remain server-side or in environment/local .env.
+  - Security controls such as reCAPTCHA, MFA, account lockout, audit logs, and step-up verification were documented and tested.
 
 - Proof:
-[Insert Screenshot: Login page with reCAPTCHA]
-[Insert Screenshot: Locked login message showing temporary lockout and approximate minutes]
-[Insert Screenshot: GitHub Actions Security Tooling Evidence green check]
-[Insert Screenshot: CodeQL green check]
-[Insert Screenshot: Local API test result showing passing tests]
-[Insert Screenshot: Local Client test result showing passing tests]
-[Insert Screenshot: Gitleaks or secret scan evidence]
-[Insert Screenshot: git status and git diff check evidence]
+  [Insert Screenshot: GitHub Actions Security Tooling Evidence green check]
+  [Insert Screenshot: CodeQL green check]
+  [Insert Screenshot: Local API test result]
+  [Insert Screenshot: Local Client test result]
+  [Insert Screenshot: Secret scan / Gitleaks evidence]
 
 ## Access Control (RBAC / ACL)
-AccSys uses role-based access control and tenant access restrictions. Guest users can access public authentication pages only. Authorized company users access tenant features according to role permissions. Tenant Admins manage company users, settings, records, reports, and tenant audit logs. SuperAdmin/System Administrator users manage platform-level governance, tenants, global users, backup SuperAdmins, and SuperAdmin audit logs.
 
 ## Intended Users
-- Guest User
-- Authorized Company User
-- Tenant Admin / Company Administrator
-- SuperAdmin / System Administrator
+
+- Guest User - Can access login and company registration pages.
+- Authorized Company User - Can access assigned accounting modules based on role permissions.
+- Tenant Admin / Company Administrator - Manages company users, company settings, accounting records, financial reports, and tenant audit logs.
+- SuperAdmin / System Administrator - Manages tenants, global users, backup SuperAdmin accounts, governance actions, and SuperAdmin audit logs.
 
 ## Access Control Matrix
-| System Feature / Resource | Guest User | Authorized Company User | Tenant Admin / Company Administrator | SuperAdmin / System Administrator |
+
+| Feature / Resource | Guest | Company User | Tenant Admin | SuperAdmin |
 | --- | --- | --- | --- | --- |
 | View Login Page | Allowed | Allowed | Allowed | Allowed |
 | Company Registration | Allowed | Denied | Denied | Denied |
-| Forgot / Reset Password | Allowed | Allowed | Allowed | Allowed |
-| Email Confirmation / Resend Confirmation | Allowed | Allowed | Allowed | Allowed |
-| Login with reCAPTCHA | Allowed | Allowed | Allowed | Allowed |
-| MFA Login | Denied | Allowed when enabled | Allowed when enabled | Allowed when enabled |
-| User Dashboard | Denied | Allowed | Allowed | Allowed |
-| Edit Own Profile | Denied | Allowed | Allowed | Allowed |
-| Enable Authenticator App MFA | Denied | Allowed | Allowed | Allowed |
-| Enable Email OTP MFA | Denied | Allowed after email confirmation | Allowed after email confirmation | Allowed after email confirmation |
-| Use Recovery Codes | Denied | Allowed when generated | Allowed when generated | Allowed when generated |
-| Manage Company Users | Denied | Denied | Allowed | Role-based governance only |
-| Manage Company Settings | Denied | Denied | Allowed | Role-based governance only |
-| Manage Chart of Accounts | Denied | Role-based | Allowed | Denied |
-| Manage Journal Entries | Denied | Role-based | Allowed | Denied |
-| Manage Bills and Vendors | Denied | Role-based | Allowed | Denied |
-| Manage Invoices and Customers | Denied | Role-based | Allowed | Denied |
-| Receive Payments | Denied | Role-based | Allowed | Denied |
-| View Financial Reports | Denied | Role-based | Allowed | Denied |
-| View Tenant Audit Logs | Denied | Denied | Allowed | Denied |
-| Manage Tenants | Denied | Denied | Denied | Allowed |
-| View Global Users | Denied | Denied | Denied | Allowed |
-| Manage Backup SuperAdmins | Denied | Denied | Denied | Allowed with step-up verification |
-| Send SuperAdmin Step-Up Email OTP | Denied | Denied | Denied | Allowed with rate limiting |
-| View SuperAdmin Audit Logs | Denied | Denied | Denied | Allowed |
-| System Configuration / Security Governance | Denied | Denied | Denied | Allowed |
-| Delete / Disable Records or Users | Denied | Role-based | Allowed | Role-based governance only |
+| Login | Allowed | Allowed | Allowed | Allowed |
+| Dashboard | Denied | Allowed | Allowed | Allowed |
+| Edit Profile | Denied | Allowed | Allowed | Allowed |
+| Enable/Manage MFA | Denied | Allowed | Allowed | Allowed |
+| Manage Company Users | Denied | Denied | Allowed | Role-based |
+| Manage Company Settings | Denied | Denied | Allowed | Role-based |
+| Chart of Accounts | Denied | Role-based | Allowed | Denied |
+| Journal Entries | Denied | Role-based | Allowed | Denied |
+| Bills | Denied | Role-based | Allowed | Denied |
+| Invoices | Denied | Role-based | Allowed | Denied |
+| Payments | Denied | Role-based | Allowed | Denied |
+| Financial Statements | Denied | Role-based | Allowed | Denied |
+| Tenant Audit Logs | Denied | Denied | Allowed | Denied |
+| Tenant Manager | Denied | Denied | Denied | Allowed |
+| Global Users | Denied | Denied | Denied | Allowed |
+| Backup SuperAdmin Management | Denied | Denied | Denied | Allowed |
+| SuperAdmin Audit Logs | Denied | Denied | Denied | Allowed |
+| Sensitive SuperAdmin Actions | Denied | Denied | Denied | Allowed |
+| Disable/Delete Users or Records | Denied | Role-based | Allowed | Role-based |
 
 ## Evidence Placeholders
-[Insert Screenshot: Login page with reCAPTCHA]
-[Insert Screenshot: Registration reCAPTCHA]
-[Insert Screenshot: User Profile with TOTP and Email OTP MFA]
-[Insert Screenshot: MFA login page]
-[Insert Screenshot: Tenant audit logs]
-[Insert Screenshot: SuperAdmin audit logs]
-[Insert Screenshot: Step-up verification dialog]
-[Insert Screenshot: GitHub Actions green checks]
-[Insert Screenshot: API/client test results]
+
+[Insert Screenshot: Login page with reCAPTCHA checkbox]
+[Insert Screenshot: Login lockout message showing temporary lockout]
+[Insert Screenshot: Registration page with reCAPTCHA checkbox]
+[Insert Screenshot: User Profile showing Authenticator App MFA and Email OTP MFA]
+[Insert Screenshot: MFA login page showing Authenticator App, Email OTP, and Recovery Code options]
+[Insert Screenshot: Tenant audit logs showing System and Security categories]
+[Insert Screenshot: SuperAdmin audit logs showing governance/security events]
+[Insert Screenshot: SuperAdmin audit details dialog]
+[Insert Screenshot: Step-up verification dialog for sensitive SuperAdmin action]
+[Insert Screenshot: Global User Management showing backup SuperAdmin support]
+[Insert Screenshot: GitHub Actions green checks for Security Tooling Evidence and CodeQL]
+[Insert Screenshot: Local API and Client test results]
+[Insert Screenshot: PayMongo test payment/callback evidence, if included in presentation]
